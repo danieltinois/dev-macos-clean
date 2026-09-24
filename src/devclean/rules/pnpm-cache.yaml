@@ -1,0 +1,10 @@
+id: pnpm-cache
+name: pnpm store cache
+category: node
+severity: SAFE
+reclaimable: true
+description: Hard-linked package store and cache used by pnpm.
+paths:
+  - "~/Library/Caches/pnpm"
+rebuild:
+  description: Recreated automatically by pnpm on the next install.

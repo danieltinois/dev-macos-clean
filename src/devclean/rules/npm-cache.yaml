@@ -1,0 +1,10 @@
+id: npm-cache
+name: npm cache
+category: node
+severity: SAFE
+reclaimable: true
+description: Downloaded package tarballs and metadata cached by npm.
+paths:
+  - "~/.npm/_cacache"
+rebuild:
+  description: Recreated automatically by npm on the next install or fetch.

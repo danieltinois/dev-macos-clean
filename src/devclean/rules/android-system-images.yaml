@@ -1,0 +1,10 @@
+id: android-system-images
+name: Android system images
+category: android
+severity: REVIEW
+reclaimable: true
+description: Emulator system images bundled with the Android SDK. Removing one breaks AVDs that use it until it is re-downloaded.
+paths:
+  - "~/Library/Android/sdk/system-images"
+rebuild:
+  description: Re-download through SDK Manager (sdkmanager "system-images;..."). Check which AVDs depend on them first.

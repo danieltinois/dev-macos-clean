@@ -1,0 +1,10 @@
+id: gradle-cache
+name: Gradle cache
+category: android
+severity: SAFE
+reclaimable: true
+description: Downloaded dependencies and build metadata cached by Gradle.
+paths:
+  - "~/.gradle/caches"
+rebuild:
+  description: Re-downloaded by Gradle on the next build.

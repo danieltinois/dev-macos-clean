@@ -1,0 +1,10 @@
+id: node-modules
+name: Node.js dependencies
+category: node
+severity: SAFE
+reclaimable: true
+description: Installed dependency trees of Node.js projects. Restorable from lockfiles with the project's package manager.
+patterns:
+  - "**/node_modules"
+rebuild:
+  description: Run the project's install command (npm install, pnpm install, yarn install, bun install).
