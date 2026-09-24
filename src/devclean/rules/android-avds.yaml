@@ -1,0 +1,10 @@
+id: android-avds
+name: Android Virtual Devices (AVD)
+category: android
+severity: REVIEW
+reclaimable: false
+description: Emulator configurations and user data (including app data and snapshots) for each AVD. Not fully recreatable without re-configuration.
+paths:
+  - "~/.android/avd/*.avd"
+rebuild:
+  description: Recreate the device with avdmanager, then reinstall the apps and data you need.

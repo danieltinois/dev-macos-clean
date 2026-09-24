@@ -1,0 +1,10 @@
+id: yarn-cache
+name: yarn cache
+category: node
+severity: SAFE
+reclaimable: true
+description: Downloaded package cache used by Yarn.
+paths:
+  - "~/Library/Caches/Yarn"
+rebuild:
+  description: Recreated automatically by Yarn on the next install.
