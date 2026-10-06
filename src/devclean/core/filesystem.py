@@ -157,6 +157,7 @@ def iter_matches(
     max_depth: int,
     max_dirs: int,
     excludes: list[str],
+    warnings: list[str] | None = None,
 ) -> Iterator[Path]:
     """Bounded BFS over *roots* yielding dirs matching any *pattern*.
 
@@ -170,6 +171,8 @@ def iter_matches(
         visited += 1
         if visited > max_dirs:
             logger.warning("discovery walk exceeded %s dirs; stopping early", max_dirs)
+            if warnings is not None:
+                warnings.append(f"discovery exceeded {max_dirs} directories; scan is partial")
             return
         path, depth = stack.pop()
         if excluded(path, excludes):
@@ -183,6 +186,8 @@ def iter_matches(
             iterator = os.scandir(path)
         except OSError as exc:
             logger.warning("cannot read %s: %s", path, exc)
+            if warnings is not None:
+                warnings.append(f"cannot read {path}: {exc}")
             continue
         with iterator:
             try:
@@ -210,3 +215,5 @@ def iter_matches(
                     stack.append((child, depth + 1))
             except OSError as exc:
                 logger.warning("cannot read %s: %s", path, exc)
+                if warnings is not None:
+                    warnings.append(f"cannot read {path}: {exc}")

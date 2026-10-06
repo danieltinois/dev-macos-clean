@@ -9,8 +9,9 @@ environments — Xcode DerivedData, iOS simulators, Android SDK images and AVDs,
 Gradle caches, `node_modules`, package manager caches, and (in later phases)
 Docker, Flutter, Python, Rust, Homebrew and JetBrains artifacts.
 
-> **Status: Phase 1 — analysis only. DevClean does NOT delete anything.**
-> There is no `rm`, no `rmtree`, no shell execution anywhere in this codebase.
+> **Status: scanner + Electron interface with recoverable cleanup.**
+> The Python CLI only analyzes. The desktop app can move selected, known
+> regenerable caches to the macOS Trash after confirmation; it never empties Trash.
 
 ## Philosophy
 
@@ -20,7 +21,7 @@ Docker, Flutter, Python, Rust, Homebrew and JetBrains artifacts.
   describing where to look, the risk, and how the artifact can be recreated.
   Specialized Python logic is the exception, registered per rule id.
 - **Core independent of UI.** The `devclean.core` package is pure domain logic.
-  Both the CLI and the future desktop app (Tauri + React + TypeScript) consume
+  Both the CLI and the Electron desktop app consume
   the same core and the same stable JSON contract.
 - **Bytes are the only truth.** All sizes are stored in bytes; human formatting
   happens only at the presentation layer.
@@ -229,11 +230,11 @@ Stable shape intended for the future desktop UI (`schema_version: 1`):
 
 ## Roadmap
 
-- **Phase 1 (current)** — Core scanner + CLI. Rules for Node.js, Xcode (DerivedData)
+- **Phase 1 (complete)** — Core scanner + CLI. Rules for Node.js, Xcode (DerivedData)
   and Android (Gradle cache, system images, AVDs). Analysis only, no deletion.
-- **Phase 2** — Safe cleanup engine that moves content to the Trash before any
-  permanent deletion is considered; per-item risk gates and dry runs.
-- **Phase 3** — Tauri + React + TypeScript desktop app consuming the Python core
+- **Phase 2 (available in Electron)** — Selected known regenerable caches moved
+  to Trash after native confirmation, with path and identity validation.
+- **Phase 3 (development interface available)** — Electron desktop app consuming the Python core
   through the JSON contract.
 - **Phase 4** — Advanced scanners: Docker, Flutter, Python (venvs, pip cache),
   Rust `target`, Maven, Homebrew, JetBrains, VSCode.
@@ -243,9 +244,54 @@ Stable shape intended for the future desktop UI (`schema_version: 1`):
 
 ## Limitations
 
-- macOS-specific default paths only; no `/`-wide scanning.
+- Global discovery covers supported artifact categories on the local disk; it is
+  bounded and excludes protected system directories and external volumes.
 - Measurements are scans, not `du`-equivalent block usage (report-size vs
   disk-size differences are expected).
-- No cleanup, no symlink following, no parallelism (all deliberate — see above).
+- CLI is analysis only. Desktop cleanup uses Trash for authorized low-risk
+  artifacts; no permanent deletion, symlink following or parallel scanning.
 - Windows development is supported for the code and tests; a Windows machine
   simply has no macOS paths to find.
+
+## Aplicativo macOS (Electron)
+
+Interface local em português, conectada ao scanner Python real. Oferece busca,
+filtros por ferramenta e risco, ordenação, detalhes de reconstrução,
+Mostrar no Finder, exportação JSON e limpeza de caches conhecidos via Lixeira.
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -e ".[dev]"
+npm ci
+npm start
+```
+
+O aplicativo analisa globalmente o disco local: pastas de usuários, projetos e
+caches conhecidos, além de Downloads e logs para revisão. Não há seletor de pasta.
+O scanner continua limitado em profundidade, diretórios e resultados; áreas de
+sistema (`/System`, `/usr`, `/private`, `/bin`, `/sbin`, `/dev`) e volumes externos
+não são percorridos. Pastas ocultas e diretórios pesados seguem as exclusões de
+descoberta, com caches ocultos conhecidos examinados por caminhos explícitos.
+Acesso depende das permissões do macOS. Avisos indicam resultados parciais.
+A CLI oferece `devclean scan --global` para a mesma descoberta.
+
+Marque itens regeneráveis e use **Enviar à Lixeira**. A confirmação nativa lista
+os caminhos e o tamanho. Caches desconhecidos, Downloads, logs, SDKs e AVDs
+aparecem para revisão, sem limpeza automática. Os arquivos do próprio DevClean
+são protegidos. Caminhos e identidade dos diretórios são revalidados antes da
+limpeza; links simbólicos, relatórios desatualizados e alvos não autorizados são
+rejeitados. Feche builds e ferramentas antes de limpar suas dependências.
+
+**Mover para a Lixeira não libera espaço no disco imediatamente.** Restaure pelo
+Finder se necessário; esvaziar a Lixeira fica a cargo do usuário. Falhas parciais
+são exibidas e os itens que falharam permanecem no relatório.
+
+O renderer usa sandbox, isolamento de contexto e uma ponte IPC com operações
+específicas. Caminhos enviados ao Finder vêm exclusivamente do último relatório.
+Não há servidor HTTP ou conteúdo remoto na interface.
+
+Esta versão executa pelo checkout; ainda não inclui instalador `.dmg`, Python
+embutido, assinatura ou notarização. Para outro interpretador, defina
+`DEVCLEAN_PYTHON` com o caminho absoluto do Python que tem o pacote instalado.
+
+Validação: `.venv/bin/python -m pytest` e `npm test`.

@@ -201,3 +201,21 @@ def test_extra_roots_are_scanned(tmp_path):
     report = scan(home, roots=[extra])
     assert report.roots == [str(home), str(extra)]
     assert any(str(f.path) == str(extra / "side" / "node_modules") for f in report.findings)
+
+def test_global_scan_adds_disk_root_and_reports_scope(tmp_path, monkeypatch):
+    home = make_home(tmp_path)
+    visited = {}
+
+    def discover(roots, patterns, **kwargs):
+        visited["roots"] = roots
+        visited["excludes"] = kwargs["excludes"]
+        return iter(())
+
+    monkeypatch.setattr("devclean.core.scanner.iter_matches", discover)
+    original_iterdir = Path.iterdir
+    monkeypatch.setattr(Path, "iterdir", lambda self: iter(()) if self == Path("/Users") else original_iterdir(self))
+    report = Scanner(ScanOptions(home=home, global_scan=True)).run(load_rules())
+    assert Path("/") in visited["roots"]
+    assert "/System" in visited["excludes"]
+    assert report.options["global_scan"] is True
+    assert "user-app-caches" not in rule_counts(report)  # known cache rule keeps its identity

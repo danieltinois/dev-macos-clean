@@ -38,6 +38,7 @@ class ScanOptions:
     max_findings: int = 200
     max_entries: int = 500_000
     home: Path | None = None
+    global_scan: bool = False
 
 
 class Scanner:
@@ -48,12 +49,21 @@ class Scanner:
         opts = self.options
         warnings: list[str] = []
 
-        selected = [rule for rule in rules if self._included(rule)]
+        selected = sorted(
+            (rule for rule in rules if self._included(rule)),
+            key=lambda rule: rule.id == "user-app-caches",
+        )
         if not selected:
             warnings.append("no rules match the requested categories; nothing to scan")
 
         home = opts.home or Path.home()
-        roots = list(dict.fromkeys([home, *opts.roots]))
+        homes = [home]
+        if opts.global_scan:
+            try:
+                homes.extend(p for p in Path("/Users").iterdir() if p.is_dir() and not p.is_symlink() and p != home)
+            except OSError as exc:
+                warnings.append(f"cannot list /Users: {exc}")
+        roots = list(dict.fromkeys([*homes, *opts.roots, *([Path("/")] if opts.global_scan else [])]))
         scan_roots: list[Path] = []
         for root in roots:
             if root.is_dir():
@@ -61,6 +71,9 @@ class Scanner:
             else:
                 warnings.append(f"scan root does not exist or is not a directory: {root}")
 
+        scan_excludes = list(opts.excludes)
+        if opts.global_scan:
+            scan_excludes.extend(["/System", "/Volumes", "/dev", "/private", "/usr", "/bin", "/sbin"])
         findings: list[Finding] = []
         seen: dict[str, str] = {}  # normalized target path -> rule_id (keeps first match)
         pattern_rules = [rule for rule in selected if rule.patterns]
@@ -69,7 +82,7 @@ class Scanner:
         for rule in selected:
             if len(findings) >= opts.max_findings:
                 break
-            for target in self._explicit_targets(rule, home):
+            for target in (target for user_home in homes for target in self._explicit_targets(rule, user_home)):
                 self._add_finding(target, rule, seen, findings, warnings, opts)
                 if len(findings) >= opts.max_findings:
                     warnings.append(f"reached max findings ({opts.max_findings}); scan stopped early")
@@ -83,7 +96,8 @@ class Scanner:
                 all_patterns,
                 max_depth=opts.max_depth,
                 max_dirs=opts.max_dirs,
-                excludes=opts.excludes,
+                excludes=scan_excludes,
+                warnings=warnings,
             ):
                 if len(findings) >= opts.max_findings:
                     warnings.append(f"reached max findings ({opts.max_findings}); scan stopped early")
@@ -102,9 +116,10 @@ class Scanner:
             scanned_at=datetime.now(timezone.utc),
             roots=[str(root) for root in scan_roots],
             options={
+                "global_scan": opts.global_scan,
                 "max_depth": opts.max_depth,
                 "max_findings": opts.max_findings,
-                "excludes": list(opts.excludes),
+                "excludes": scan_excludes,
                 "categories": sorted(opts.categories or []),
             },
             totals=totals,
@@ -170,7 +185,7 @@ class Scanner:
                 rebuild=rule.rebuild,
                 path=target,
                 size_bytes=measured.bytes,
-                size_complete=not measured.truncated,
+                size_complete=not measured.truncated and not measured.errors,
                 last_modified=mtime(target),
             )
         )

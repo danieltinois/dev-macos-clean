@@ -59,7 +59,7 @@ def test_dir_size_does_not_follow_symlinks(tmp_path, tmp_symlink):
     make_file(tmp_path / "real" / "big.bin", 5000)
     os.symlink(tmp_path / "real", tmp_path / "loop")
     result = dir_size(tmp_path)
-    assert result.bytes == 0  # only a symlink was created inside; nothing dereferenced
+    assert result.bytes == 5000  # real file counted once; symlink is not followed
 
 
 def test_dir_size_tolerates_permission_errors(tmp_path, monkeypatch):

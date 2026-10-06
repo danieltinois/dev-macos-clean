@@ -1,0 +1,7 @@
+{
+  "name": "devclean-desktop", "version": "0.1.0", "private": true,
+  "description": "DevClean macOS developer storage analyzer",
+  "main": "desktop/main.cjs",
+  "scripts": {"start": "electron .", "test": "node --test desktop/*.test.cjs"},
+  "devDependencies": {"electron": "^42.0.0"}
+}

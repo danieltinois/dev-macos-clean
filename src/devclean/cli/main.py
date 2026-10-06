@@ -32,6 +32,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="ROOT",
         help="extra directories to scan in addition to the home directory",
     )
+    scan.add_argument("--global", dest="global_scan", action="store_true", help="discover developer artifacts across local macOS directories")
     scan.add_argument(
         "--category",
         "-c",
@@ -81,6 +82,7 @@ def _cmd_scan(args: argparse.Namespace) -> int:
         excludes=args.exclude or [],
         max_depth=args.max_depth,
         home=args.home,
+        global_scan=args.global_scan,
     )
     report = Scanner(options).run(rules)
     output = report_to_json(report) if args.json else render_human(report)
