@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const root = path.resolve(__dirname, '..');
 function scan(folder) {
   const python = process.env.DEVCLEAN_PYTHON || path.join(root, '.venv/bin/python');
-  if (!fs.existsSync(python)) return Promise.reject(new Error('Prepare o Python: python3 -m venv .venv e .venv/bin/pip install -e ".[dev]"'));
+  if (!fs.existsSync(python)) return Promise.reject(new Error('Ambiente Python não encontrado. Rode npm run setup na pasta do projeto e abra o app novamente.'));
   return new Promise((resolve, reject) => {
     const args = ['-m', 'devclean', 'scan', '--json'];
     if (folder) args.push('--home', folder);

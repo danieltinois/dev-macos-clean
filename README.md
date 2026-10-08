@@ -90,6 +90,8 @@ Discovery primitives:
 - `paths` — probed directly, no walking. Supports `~`, `$ENV`, and globs
   (e.g. `~/.android/avd/*.avd` yields one finding per AVD).
 - `patterns` — discovered by a bounded walk for templates like `**/node_modules`.
+- `markers` — optional, for `patterns` only: the match counts only when its
+  parent directory contains one of these files (e.g. `target` next to `Cargo.toml`).
 
 Rule files are strictly validated (`extra="forbid"` catches typos, ids must be
 unique slugs, severity must be one of the three values, at least one of
@@ -181,7 +183,7 @@ Stable shape intended for the future desktop UI (`schema_version: 1`):
   "schema_version": 1,
   "scanned_at": "2026-09-24T12:00:00Z",
   "roots": ["/Users/me"],
-  "options": {"max_depth": 6, "max_findings": 200, "excludes": [], "categories": []},
+  "options": {"max_depth": 6, "max_findings": 500, "excludes": [], "categories": []},
   "totals": {
     "findings": 12,
     "bytes": 56119758848,
@@ -212,7 +214,7 @@ Stable shape intended for the future desktop UI (`schema_version: 1`):
 
 - **Explicit paths are probed, not walked.** Pattern discovery is the only
   thing that walks, and it is a bounded BFS: `max_depth` (default 6) from the
-  home directory, with caps on visited directories (25,000) and findings (200).
+  home directory, with caps on visited directories (25,000) and findings (500).
 - **Never enters**: hidden dirs (`.git` included), symlinks (loop-proof),
   `Library`, `Applications`, `Music`, `Movies`, `Pictures`, `node_modules`,
   `Pods`, `DerivedData`, `build`, `target`.
@@ -259,12 +261,49 @@ Interface local em português, conectada ao scanner Python real. Oferece busca,
 filtros por ferramenta e risco, ordenação, detalhes de reconstrução,
 Mostrar no Finder, exportação JSON e limpeza de caches conhecidos via Lixeira.
 
+### Início rápido
+
 ```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -e ".[dev]"
 npm ci
-npm start
+npm run setup   # cria .venv e instala o scanner Python
+npm start       # abre o app e já inicia a análise
 ```
+
+O app analisa o Mac assim que abre. Depois:
+
+- **Limpeza automática** — um clique (mais a confirmação do macOS) envia à
+  Lixeira apenas o que se recria sozinho, sem passo manual nem trabalho local:
+  DerivedData, caches do Simulator, CocoaPods, Homebrew, pip, npm, pnpm, Yarn,
+  Bun, Go build, Gradle, Gradle Wrapper, pub cache, e `node_modules`/`target`
+  de projetos parados há 90+ dias.
+- **Selecionar tudo** — marca tudo que pode ir para a Lixeira: os itens de
+  baixo risco fora da automática (projetos ativos, caches de IDE, Device
+  Support, Playwright, módulos do Go, registro do Cargo) e os itens **Revisar**
+  que podem ser movidos com segurança (caches e logs de apps, Android system
+  images, AVDs, Xcode Archives, repositório Maven). A confirmação lista os
+  itens para revisar separadamente. Itens dentro de uma pasta já selecionada
+  são ignorados.
+- Continuam bloqueados, com o motivo na própria linha: a pasta Downloads
+  inteira, o disco do Docker, os Simuladores (use os comandos em Detalhes),
+  pacotes globais, pastas que o macOS não deixou ler por completo e os
+  arquivos do próprio DevClean.
+
+Depois, esvazie a Lixeira para liberar o espaço.
+
+Sem interface: `npm run scan` (ou `npm run scan -- --category xcode`).
+
+### O que é detectado
+
+| Ferramenta | Limpeza com um clique (baixo risco) | Só para revisão |
+| --- | --- | --- |
+| Xcode / iOS | DerivedData, Device Support, caches do Simulator, CocoaPods | Simuladores (`xcrun simctl delete unavailable`), Archives |
+| Node.js | `node_modules`, npm, pnpm, Yarn, Bun, navegadores do Playwright | |
+| Android / Java | Gradle caches, Gradle Wrapper | System images, AVDs, repositório Maven |
+| Rust / Go / Python / Dart | `target/` de projetos Cargo, registro Cargo, Go build e módulos, pip, pub cache | |
+| IDEs / outros | Caches JetBrains e Android Studio, Homebrew | Docker (`docker system prune`), caches de apps, logs, Downloads |
+
+Para incluir uma nova ferramenta, adicione um YAML em `src/devclean/rules/` e,
+se a limpeza for de baixo risco, o caminho fixo em `desktop/cleanup.cjs`.
 
 O aplicativo analisa globalmente o disco local: pastas de usuários, projetos e
 caches conhecidos, além de Downloads e logs para revisão. Não há seletor de pasta.
@@ -276,8 +315,8 @@ Acesso depende das permissões do macOS. Avisos indicam resultados parciais.
 A CLI oferece `devclean scan --global` para a mesma descoberta.
 
 Marque itens regeneráveis e use **Enviar à Lixeira**. A confirmação nativa lista
-os caminhos e o tamanho. Caches desconhecidos, Downloads, logs, SDKs e AVDs
-aparecem para revisão, sem limpeza automática. Os arquivos do próprio DevClean
+os caminhos e o tamanho. Caches de apps, logs, SDKs e AVDs podem ser
+selecionados manualmente, nunca entram na limpeza automática. Os arquivos do próprio DevClean
 são protegidos. Caminhos e identidade dos diretórios são revalidados antes da
 limpeza; links simbólicos, relatórios desatualizados e alvos não autorizados são
 rejeitados. Feche builds e ferramentas antes de limpar suas dependências.
@@ -294,4 +333,4 @@ Esta versão executa pelo checkout; ainda não inclui instalador `.dmg`, Python
 embutido, assinatura ou notarização. Para outro interpretador, defina
 `DEVCLEAN_PYTHON` com o caminho absoluto do Python que tem o pacote instalado.
 
-Validação: `.venv/bin/python -m pytest` e `npm test`.
+Validação: `npm test` (roda os testes do Electron e do Python).
