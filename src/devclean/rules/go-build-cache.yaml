@@ -1,0 +1,12 @@
+id: go-build-cache
+name: Go build cache
+category: go
+severity: SAFE
+reclaimable: true
+description: Resultados de compilação e testes armazenados pelo comando go.
+paths:
+  - "~/Library/Caches/go-build"
+rebuild:
+  description: Recriado automaticamente no próximo go build ou go test.
+  commands:
+    - go clean -cache

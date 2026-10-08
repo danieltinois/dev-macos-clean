@@ -1,0 +1,11 @@
+id: jetbrains-caches
+name: Caches das IDEs JetBrains
+category: ide
+severity: SAFE
+reclaimable: true
+description: Índices e caches do IntelliJ IDEA, Android Studio, WebStorm, PyCharm e outras IDEs JetBrains. Versões antigas das IDEs deixam caches para trás.
+paths:
+  - "~/Library/Caches/JetBrains"
+  - "~/Library/Caches/Google/AndroidStudio*"
+rebuild:
+  description: Feche as IDEs antes de limpar. Os índices são recriados na próxima abertura do projeto.

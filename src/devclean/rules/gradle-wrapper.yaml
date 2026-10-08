@@ -1,0 +1,10 @@
+id: gradle-wrapper
+name: Distribuições do Gradle Wrapper
+category: android
+severity: SAFE
+reclaimable: true
+description: Versões do Gradle baixadas pelo gradlew de cada projeto. Versões antigas se acumulam a cada atualização.
+paths:
+  - "~/.gradle/wrapper/dists"
+rebuild:
+  description: O gradlew baixa a versão necessária no próximo build.

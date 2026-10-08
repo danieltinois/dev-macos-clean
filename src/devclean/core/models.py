@@ -44,6 +44,9 @@ class Rule(BaseModel):
     description: str
     paths: list[str] = Field(default_factory=list)
     patterns: list[str] = Field(default_factory=list)
+    # For ``patterns``: a match only counts when its parent directory contains
+    # at least one of these files (e.g. ``target`` next to ``Cargo.toml``).
+    markers: list[str] = Field(default_factory=list)
     rebuild: Rebuild | None = None
     model_config = ConfigDict(extra="forbid")
 
@@ -58,6 +61,10 @@ class Rule(BaseModel):
     def _has_target(self) -> Rule:
         if not self.paths and not self.patterns:
             raise ValueError("rule must define at least one of paths or patterns")
+        if self.markers and not self.patterns:
+            raise ValueError("markers only apply to patterns")
+        if any("/" in marker or marker in {"", ".", ".."} for marker in self.markers):
+            raise ValueError("markers must be plain file names")
         return self
 
 

@@ -219,3 +219,44 @@ def test_global_scan_adds_disk_root_and_reports_scope(tmp_path, monkeypatch):
     assert "/System" in visited["excludes"]
     assert report.options["global_scan"] is True
     assert "user-app-caches" not in rule_counts(report)  # known cache rule keeps its identity
+
+
+def test_markers_only_match_real_cargo_projects(tmp_path):
+    home = tmp_path / "home"
+    build_tree(
+        home,
+        {
+            "code/crate/Cargo.toml": 10,
+            "code/crate/target/debug/app": 400,
+            "code/web/target/output.txt": 20,  # no Cargo.toml: not a Rust build
+        },
+    )
+    report = scan(home, categories={"rust"})
+    targets = [f for f in report.findings if f.rule_id == "rust-target"]
+    assert [f.path for f in targets] == [home / "code/crate/target"]
+    assert targets[0].size_bytes == 400
+    assert targets[0].metadata["Cargo.toml"] == "yes"
+
+
+def test_new_developer_caches_are_detected(tmp_path):
+    home = tmp_path / "home"
+    build_tree(
+        home,
+        {
+            "Library/Developer/Xcode/iOS DeviceSupport/17.0/Symbols/x": 70,
+            "Library/Developer/CoreSimulator/Devices/ABC/data/x": 30,
+            "Library/Caches/CocoaPods/Pods/x": 20,
+            "Library/Caches/go-build/aa/x": 10,
+            "Library/Caches/JetBrains/IntelliJIdea2024.1/x": 15,
+            "Library/Caches/ms-playwright/chromium-1/x": 25,
+            ".bun/install/cache/x": 5,
+        },
+    )
+    by_rule = {f.rule_id: f for f in scan(home).findings}
+    assert by_rule["xcode-device-support"].severity == Severity.SAFE
+    assert by_rule["ios-simulators"].severity == Severity.REVIEW
+    for rule_id in ("cocoapods-cache", "go-build-cache", "jetbrains-caches", "playwright-browsers", "bun-cache"):
+        assert by_rule[rule_id].severity == Severity.SAFE
+    # Specific caches win over the generic per-app cache rule.
+    generic = {f.path.name for f in scan(home).findings if f.rule_id == "user-app-caches"}
+    assert not generic & {"CocoaPods", "go-build", "JetBrains", "ms-playwright"}

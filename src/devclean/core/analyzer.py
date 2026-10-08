@@ -44,9 +44,17 @@ def enrich_node_modules(finding: Finding) -> None:
     finding.metadata["package_manager"] = _LOCKFILES.get(lockfile or "", "unknown")
 
 
+def enrich_cargo_target(finding: Finding) -> None:
+    """Attach the Cargo project that owns a ``target`` directory."""
+    project = finding.path.parent
+    finding.metadata["project"] = str(project)
+    finding.metadata["Cargo.toml"] = "yes" if (project / "Cargo.toml").is_file() else "no"
+
+
 # rule_id -> enricher. Contributors with specialized logic register here.
 ENRICHERS: dict[str, Callable[[Finding], None]] = {
     "node-modules": enrich_node_modules,
+    "rust-target": enrich_cargo_target,
 }
 
 

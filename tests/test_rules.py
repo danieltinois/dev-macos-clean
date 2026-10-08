@@ -79,3 +79,12 @@ def test_duplicate_ids_rejected(tmp_path):
 def test_missing_rules_directory_raises(tmp_path):
     with pytest.raises(RuleError, match="rules directory not found"):
         load_rules(tmp_path / "does-not-exist")
+
+def test_markers_require_patterns_and_plain_names(tmp_path):
+    base = "id: x\nname: X\ncategory: c\nseverity: SAFE\nreclaimable: true\ndescription: d\n"
+    (tmp_path / "bad.yaml").write_text(base + "paths: ['/x']\nmarkers: [Cargo.toml]\n", encoding="utf-8")
+    with pytest.raises(RuleError, match="markers"):
+        load_rules(tmp_path)
+    (tmp_path / "bad.yaml").write_text(base + "patterns: ['**/target']\nmarkers: ['../x']\n", encoding="utf-8")
+    with pytest.raises(RuleError, match="markers"):
+        load_rules(tmp_path)

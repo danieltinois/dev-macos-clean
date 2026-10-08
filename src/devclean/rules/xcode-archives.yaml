@@ -1,0 +1,10 @@
+id: xcode-archives
+name: Xcode Archives
+category: xcode
+severity: REVIEW
+reclaimable: false
+description: Builds arquivados para distribuição, incluindo dSYMs usados para simbolizar crashes de versões publicadas. Mantenha os arquivos das versões ainda em produção.
+paths:
+  - "~/Library/Developer/Xcode/Archives"
+rebuild:
+  description: Só pode ser recriado gerando um novo Archive a partir do mesmo commit. Apague archives antigos pelo Organizer do Xcode.

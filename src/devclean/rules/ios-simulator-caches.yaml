@@ -1,0 +1,10 @@
+id: ios-simulator-caches
+name: Caches do Simulator
+category: xcode
+severity: SAFE
+reclaimable: true
+description: Caches de dyld e de runtime gerados pelo CoreSimulator.
+paths:
+  - "~/Library/Developer/CoreSimulator/Caches"
+rebuild:
+  description: Recriados automaticamente quando um simulador é iniciado.

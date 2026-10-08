@@ -35,7 +35,7 @@ class ScanOptions:
     excludes: list[str] = field(default_factory=list)
     max_depth: int = 6
     max_dirs: int = 25_000
-    max_findings: int = 200
+    max_findings: int = 500
     max_entries: int = 500_000
     home: Path | None = None
     global_scan: bool = False
@@ -146,8 +146,11 @@ class Scanner:
     @staticmethod
     def _rule_for(target: Path, pattern_rules: list[Rule]) -> Rule | None:
         for rule in pattern_rules:
-            if any(rule_pattern_matches(target, pattern) for pattern in rule.patterns):
-                return rule
+            if not any(rule_pattern_matches(target, pattern) for pattern in rule.patterns):
+                continue
+            if rule.markers and not any((target.parent / marker).is_file() for marker in rule.markers):
+                continue
+            return rule
         return None
 
     def _add_finding(
