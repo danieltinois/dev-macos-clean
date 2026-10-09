@@ -1,6 +1,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const {buildTotals} = require('../core/analyzer.cjs');
 // Fixed, home-relative locations of known regenerable caches. A trailing `*`
 // matches versioned folder names directly inside the same parent.
 const targets = {
@@ -161,8 +162,6 @@ async function moveToTrash(selected, manifest, trashItem) {
 function remainingReport(report, moved) {
   const removed = new Set(moved.map(f=>f.path));
   const findings = report.findings.filter(f=>!removed.has(f.path));
-  const totals = {findings:findings.length, bytes:0, by_severity:{SAFE:0,REVIEW:0,DANGER:0}, by_category:{}};
-  for(const f of findings) {totals.bytes+=f.size_bytes;totals.by_severity[f.severity]+=f.size_bytes;totals.by_category[f.category]=(totals.by_category[f.category]||0)+f.size_bytes;}
-  return {...report, findings, totals, cleanup_token:crypto.randomUUID()};
+  return {...report, findings, totals:buildTotals(findings), cleanup_token:crypto.randomUUID()};
 }
 module.exports = {STALE_DAYS, prepare, select, validate, moveToTrash, remainingReport};

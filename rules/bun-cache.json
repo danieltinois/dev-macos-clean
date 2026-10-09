@@ -1,0 +1,14 @@
+{
+  "id": "bun-cache",
+  "name": "Bun cache",
+  "category": "node",
+  "severity": "SAFE",
+  "reclaimable": true,
+  "description": "Pacotes baixados e armazenados pelo Bun.",
+  "paths": [
+    "~/.bun/install/cache"
+  ],
+  "rebuild": {
+    "description": "Recriado automaticamente no próximo bun install."
+  }
+}

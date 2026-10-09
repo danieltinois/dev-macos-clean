@@ -1,0 +1,14 @@
+{
+  "id": "cocoapods-cache",
+  "name": "CocoaPods cache",
+  "category": "xcode",
+  "severity": "SAFE",
+  "reclaimable": true,
+  "description": "Pods e specs baixados pelo CocoaPods. Os Pods de cada projeto permanecem intactos.",
+  "paths": [
+    "~/Library/Caches/CocoaPods"
+  ],
+  "rebuild": {
+    "description": "O CocoaPods baixa os pods novamente no próximo pod install."
+  }
+}

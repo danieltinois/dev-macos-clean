@@ -3,12 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "description": "DevClean macOS developer storage analyzer",
+  "license": "MIT",
   "main": "desktop/main.cjs",
+  "bin": {
+    "devclean": "cli/devclean.cjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
-    "setup": "python3 -m venv .venv && .venv/bin/python -m pip install -q -e \".[dev]\"",
     "start": "electron .",
-    "scan": ".venv/bin/python -m devclean scan",
-    "test": "node --test desktop/*.test.cjs && .venv/bin/python -m pytest -q"
+    "scan": "node cli/devclean.cjs scan",
+    "test": "node --test core/*.test.cjs cli/*.test.cjs desktop/*.test.cjs"
   },
   "devDependencies": {
     "electron": "^42.0.0"

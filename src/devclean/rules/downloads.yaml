@@ -1,8 +1,0 @@
-id: downloads
-name: Downloads
-category: downloads
-severity: REVIEW
-reclaimable: false
-description: Arquivos baixados. Podem incluir instaladores antigos, duplicatas e documentos importantes. Revise no Finder; o tamanho não determina se um arquivo é inútil.
-paths:
-  - "~/Downloads"

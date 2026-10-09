@@ -1,0 +1,17 @@
+{
+  "id": "ios-simulators",
+  "name": "Simuladores iOS",
+  "category": "xcode",
+  "severity": "REVIEW",
+  "reclaimable": false,
+  "description": "Dispositivos do Simulator com apps instalados e seus dados. Simuladores de runtimes removidos ficam órfãos e ocupam espaço.",
+  "paths": [
+    "~/Library/Developer/CoreSimulator/Devices"
+  ],
+  "rebuild": {
+    "description": "Remova simuladores sem runtime disponível com o comando abaixo; os demais podem ser recriados pelo Xcode (dados dos apps são perdidos).",
+    "commands": [
+      "xcrun simctl delete unavailable"
+    ]
+  }
+}

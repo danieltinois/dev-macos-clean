@@ -1,25 +1,28 @@
-const { spawn } = require('node:child_process');
-const path = require('node:path');
-const fs = require('node:fs');
-const root = path.resolve(__dirname, '..');
-function scan(folder) {
-  const python = process.env.DEVCLEAN_PYTHON || path.join(root, '.venv/bin/python');
-  if (!fs.existsSync(python)) return Promise.reject(new Error('Ambiente Python não encontrado. Rode npm run setup na pasta do projeto e abra o app novamente.'));
+// Runs the core scanner in a worker thread so the walk never blocks the Electron main process.
+const {Worker, isMainThread, parentPort, workerData} = require('node:worker_threads');
+const TIMEOUT_MS = 300000;
+
+if (!isMainThread && workerData?.devcleanScan) {
+  const {loadRules, scan} = require('../core/index.cjs');
+  parentPort.postMessage(scan(loadRules(), workerData.options));
+}
+
+// Scan `home` only, or the whole local disk when no folder is given.
+function scan(home) {
+  const options = home ? {home} : {globalScan: true};
   return new Promise((resolve, reject) => {
-    const args = ['-m', 'devclean', 'scan', '--json'];
-    if (folder) args.push('--home', folder);
-    else args.push('--global');
-    const child = spawn(python, args, {cwd: root, shell: false});
-    let output = '', error = '', settled = false;
-    const finish = (err, value) => { if (settled) return; settled = true; clearTimeout(timer); err ? reject(err) : resolve(value); };
-    const timer = setTimeout(() => {child.kill(); finish(new Error('A análise excedeu 5 minutos. Escolha uma pasta menor.'));}, 300000);
-    child.stdout.on('data', data => {output += data; if (output.length > 16000000) {child.kill(); finish(new Error('Relatório excedeu o limite de tamanho.'));}});
-    child.stderr.on('data', data => {error = (error + data).slice(-8000);});
-    child.on('error', err => finish(err));
-    child.on('close', code => {
-      if (code !== 0) return finish(new Error(error || 'Não foi possível analisar esta pasta.'));
-      try {finish(null, JSON.parse(output));} catch {finish(new Error('O analisador retornou um relatório inválido.'));}
-    });
+    const worker = new Worker(__filename, {workerData: {devcleanScan: true, options}});
+    let settled = false;
+    const finish = (error, report) => {
+      if (settled) return;
+      settled = true; clearTimeout(timer); worker.terminate();
+      error ? reject(error) : resolve(report);
+    };
+    const timer = setTimeout(() => finish(new Error('A análise excedeu 5 minutos. Escolha uma pasta menor.')), TIMEOUT_MS);
+    worker.once('message', report => finish(null, report));
+    worker.once('error', error => finish(error));
+    worker.once('exit', code => finish(new Error(`O analisador parou inesperadamente (código ${code}).`)));
   });
 }
+
 module.exports = {scan};

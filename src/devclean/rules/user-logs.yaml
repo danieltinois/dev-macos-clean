@@ -1,8 +1,0 @@
-id: user-logs
-name: Logs de aplicativos
-category: logs
-severity: REVIEW
-reclaimable: false
-description: Logs de diagnóstico dos aplicativos. Podem ser necessários para investigar problemas; revise os arquivos no Finder.
-paths:
-  - "~/Library/Logs/*"
