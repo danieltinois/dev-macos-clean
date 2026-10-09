@@ -17,18 +17,21 @@ ipcMain.handle('scan', async event => {
     report = prepared.report; manifest = prepared.manifest; return report;
   } finally {busy = false;}
 });
-ipcMain.handle('cleanup', async (event, indices, token) => {
+ipcMain.handle('cleanup', async (event, indices, token, automatic) => {
   trusted(event);
   if (busy) throw new Error('Aguarde a operação atual.');
   busy = true;
   try {
     const selected = cleanup.select(report, indices, token);
+    if (automatic === true && selected.some(f => !f.auto_clean)) throw new Error('Item não autorizado para limpeza automática.');
     await cleanup.validate(selected, manifest);
     const total = selected.reduce((sum, f) => sum + f.size_bytes, 0);
+    const review = selected.filter(f => f.cleanup_review);
+    const list = items => items.length > 25 ? `${items.slice(0, 25).map(f => f.path).join('\n')}\n… e mais ${items.length - 25}\n\n` : items.length ? `${items.map(f => f.path).join('\n')}\n\n` : '';
     const result = await dialog.showMessageBox(window, {
-      type: 'warning', title: 'Enviar à Lixeira',
-      message: `Mover ${selected.length} diretório(s) para a Lixeira?`,
-      detail: `${(total / 1024**2).toLocaleString('pt-BR', {maximumFractionDigits: 1})} MB selecionados.\n\n${selected.map(f=>f.path).join('\n')}\n\nFeche builds e ferramentas que usam estes diretórios. Dependências precisarão ser reinstaladas e caches serão recriados.\n\nVocê pode restaurar pelo Finder. O espaço no disco só é liberado após esvaziar a Lixeira.`,
+      type: 'warning', title: automatic === true ? 'Limpeza automática' : 'Enviar à Lixeira',
+      message: automatic === true ? `Limpeza automática: mover ${selected.length} cache(s) e dependência(s) para a Lixeira?` : `Mover ${selected.length} item(ns) para a Lixeira?`,
+      detail: `${(total / 1024**2).toLocaleString('pt-BR', {maximumFractionDigits: 1})} MB selecionados.\n\n${list(selected.filter(f => !f.cleanup_review))}${review.length ? `⚠️ PARA REVISAR — podem conter dados que não voltam sozinhos (AVDs, archives, logs, caches de apps):\n${list(review)}` : ''}Feche builds e ferramentas que usam estes diretórios. Dependências precisarão ser reinstaladas e caches serão recriados.\n\nVocê pode restaurar pelo Finder. O espaço no disco só é liberado após esvaziar a Lixeira.`,
       buttons: ['Cancelar', 'Enviar à Lixeira'], defaultId: 0, cancelId: 0, noLink: true,
     });
     if (result.response !== 1) return {canceled:true};

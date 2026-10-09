@@ -97,3 +97,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .item-details>span:last-child { color: #747d89; }
 .scope-note { color: var(--muted); font: 10px var(--mono); }
 @media(max-width:1000px) { .table-head { grid-template-columns: 18px 75px minmax(0,1fr) 85px 80px 10px; }.row { grid-template-columns: 18px minmax(0,1fr); }.item-details { grid-template-columns: 75px minmax(0,1fr) 85px 80px 10px; gap: 10px; }.scope-note { display: none; } }
+.quick { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.quick #selection { margin-left: 6px; }
+.actions { display: flex; gap: 8px; }
+.row-info small.blocked { color: #8a7f6e; margin-top: 4px; white-space: normal; }

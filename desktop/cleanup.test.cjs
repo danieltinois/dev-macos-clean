@@ -53,3 +53,66 @@ test('preserves failed items and reports partial success',()=>fixture(async({hom
   const remaining=cleanup.remainingReport(p.report,result.moved);
   assert.equal(remaining.findings[0].path,target2);
 }));
+test('allows Cargo targets and every Device Support folder, but only with real markers',()=>fixture(async({home,finding})=>{
+  const crate=path.join(home,'code','crate');const target=path.join(crate,'target');await fs.mkdir(target,{recursive:true});
+  const support=path.join(home,'Library','Developer','Xcode','watchOS DeviceSupport');await fs.mkdir(support,{recursive:true});
+  const rust={...finding,rule_id:'rust-target',path:target,metadata:{'Cargo.toml':'yes'}};
+  const report={findings:[rust,{...finding,rule_id:'xcode-device-support',path:support}]};
+  let p=await cleanup.prepare(report,home,path.join(home,'app'));
+  assert.equal(p.report.findings[0].cleanup_allowed,false,'metadata alone is not enough');
+  assert.equal(p.report.findings[1].cleanup_allowed,true);
+  await fs.writeFile(path.join(crate,'Cargo.toml'),'[package]');
+  p=await cleanup.prepare(report,home,path.join(home,'app'));
+  assert.equal(p.report.findings[0].cleanup_allowed,true);
+  const other={...finding,rule_id:'xcode-device-support',path:path.join(home,'Library','Developer','Xcode')};
+  p=await cleanup.prepare({findings:[other]},home,path.join(home,'app'));
+  assert.equal(p.report.findings[0].cleanup_allowed,false);
+}));
+test('versioned Android Studio caches match only direct children with the prefix',()=>fixture(async({home,finding})=>{
+  const caches=path.join(home,'Library','Caches','Google');
+  const cases=[[path.join(caches,'AndroidStudio2026.2'),true],[path.join(caches,'AndroidStudio'),false],[path.join(caches,'Chrome'),false],[path.join(caches,'AndroidStudio2026.2','x'),false]];
+  for(const [dir] of cases) await fs.mkdir(dir,{recursive:true});
+  const p=await cleanup.prepare({findings:cases.map(([dir])=>({...finding,rule_id:'jetbrains-caches',path:dir}))},home,path.join(home,'app'));
+  assert.deepEqual(p.report.findings.map(f=>f.cleanup_allowed),cases.map(([,ok])=>ok));
+}));
+test('automatic cleanup covers self-recreating caches and stale projects only',()=>fixture(async({home,finding})=>{
+  const now=Date.parse('2026-10-08T00:00:00Z');const day=86400000;
+  const project=async name=>{const dir=path.join(home,'code',name);await fs.mkdir(path.join(dir,'node_modules'),{recursive:true});await fs.writeFile(path.join(dir,'package.json'),'{}');return path.join(dir,'node_modules');};
+  const jetbrains=path.join(home,'Library','Caches','JetBrains');await fs.mkdir(jetbrains,{recursive:true});
+  const node={...finding,rule_id:'node-modules',metadata:{'package.json':'yes'}};
+  const findings=[
+    finding,
+    {...node,path:await project('old'),last_modified:new Date(now-120*day).toISOString()},
+    {...node,path:await project('active'),last_modified:new Date(now-5*day).toISOString()},
+    {...node,path:await project('unknown'),last_modified:null},
+    {...finding,rule_id:'jetbrains-caches',path:jetbrains},
+    {...finding,severity:'REVIEW'},
+  ];
+  const p=await cleanup.prepare({findings},home,path.join(home,'app'),now);
+  assert.deepEqual(p.report.findings.map(f=>f.auto_clean),[true,true,false,false,false,false]);
+  assert.deepEqual(p.report.findings.map(f=>f.cleanup_allowed),[true,true,true,true,true,false]);
+}));
+test('review items can be selected by hand but never automatically; risky ones stay blocked with a reason',()=>fixture(async({home,finding})=>{
+  const mk=async rel=>{const dir=path.join(home,rel);await fs.mkdir(dir,{recursive:true});return dir;};
+  const review={...finding,severity:'REVIEW',reclaimable:false};
+  const avd=await mk('.android/avd/Pixel.avd');await fs.writeFile(path.join(home,'.android/avd/Pixel.ini'),'path=');
+  const appCacheFile=path.join(await mk('Library/Caches'),'thumb.png');await fs.writeFile(appCacheFile,'png');
+  const findings=[
+    {...review,rule_id:'android-avds',path:avd},
+    {...review,rule_id:'user-app-caches',path:await mk('Library/Caches/com.spotify.client')},
+    {...review,rule_id:'user-app-caches',path:appCacheFile},
+    {...review,rule_id:'user-logs',path:await mk('Library/Logs/DiagnosticReports')},
+    {...review,rule_id:'downloads',path:await mk('Downloads')},
+    {...review,rule_id:'user-app-caches',path:await mk('Library/Caches/CloudKit'),size_complete:false},
+    {...review,rule_id:'user-app-caches',path:await mk('Library/Caches/a/b')},
+    {...review,rule_id:'android-avds',path:await mk('.android/avd/notes')},
+    {...finding,rule_id:'node-modules',path:'/opt/homebrew/lib/node_modules',metadata:{'package.json':'yes'}},
+  ];
+  const p=await cleanup.prepare({findings},home,path.join(home,'app'));
+  assert.deepEqual(p.report.findings.map(f=>f.cleanup_allowed),[true,true,true,true,false,false,false,false,false]);
+  assert.ok(p.report.findings.filter(f=>f.cleanup_allowed).every(f=>f.cleanup_review && !f.auto_clean));
+  assert.ok(p.report.findings.filter(f=>!f.cleanup_allowed).every(f=>f.cleanup_reason.length>10));
+  const items=cleanup.select(p.report,[0,2],p.report.cleanup_token);const called=[];
+  await cleanup.moveToTrash(items,p.manifest,async t=>called.push(t));
+  assert.deepEqual(called,[avd,path.join(home,'.android/avd/Pixel.ini'),appCacheFile]);
+}));

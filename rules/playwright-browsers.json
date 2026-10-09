@@ -1,0 +1,17 @@
+{
+  "id": "playwright-browsers",
+  "name": "Navegadores do Playwright",
+  "category": "node",
+  "severity": "SAFE",
+  "reclaimable": true,
+  "description": "Chromium, Firefox e WebKit baixados pelo Playwright. Cada versão do Playwright baixa novas cópias.",
+  "paths": [
+    "~/Library/Caches/ms-playwright"
+  ],
+  "rebuild": {
+    "description": "Baixe novamente com o comando abaixo no projeto que usa Playwright.",
+    "commands": [
+      "npx playwright install"
+    ]
+  }
+}

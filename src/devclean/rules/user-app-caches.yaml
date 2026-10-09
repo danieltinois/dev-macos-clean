@@ -1,8 +1,0 @@
-id: user-app-caches
-name: Cache de aplicativo
-category: macos
-severity: REVIEW
-reclaimable: true
-description: Cache mantido por um aplicativo. A regeneração e o impacto dependem do aplicativo; revise seu conteúdo e feche o aplicativo antes de considerar a remoção.
-paths:
-  - "~/Library/Caches/*"

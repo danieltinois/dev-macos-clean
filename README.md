@@ -10,19 +10,20 @@ Gradle caches, `node_modules`, package manager caches, and (in later phases)
 Docker, Flutter, Python, Rust, Homebrew and JetBrains artifacts.
 
 > **Status: scanner + Electron interface with recoverable cleanup.**
-> The Python CLI only analyzes. The desktop app can move selected, known
+> Everything is plain Node.js — no Python, no runtime dependencies.
+> The CLI only analyzes. The desktop app can move selected, known
 > regenerable caches to the macOS Trash after confirmation; it never empties Trash.
 
 ## Philosophy
 
 - **Scan broadly, delete narrowly.** The scanner may look in many places; any
   future destructive operation will be extremely restricted.
-- **Declarative rules first.** Most scanners are just data: a YAML file
+- **Declarative rules first.** Most scanners are just data: a JSON file
   describing where to look, the risk, and how the artifact can be recreated.
-  Specialized Python logic is the exception, registered per rule id.
-- **Core independent of UI.** The `devclean.core` package is pure domain logic.
-  Both the CLI and the Electron desktop app consume
-  the same core and the same stable JSON contract.
+  Specialized code is the exception, registered per rule id.
+- **Core independent of UI.** `core/` is pure domain logic with no Electron or
+  terminal code. The CLI and the desktop app consume the same core and the
+  same stable report contract.
 - **Bytes are the only truth.** All sizes are stored in bytes; human formatting
   happens only at the presentation layer.
 
@@ -43,77 +44,99 @@ context (e.g. an SDK another tool depends on) without touching rule files.
 ## Architecture
 
 ```
-devclean/
-├── pyproject.toml
-├── README.md
-├── src/devclean/
-│   ├── core/                  # domain: no I/O to the user, no UI
-│   │   ├── models.py          # Rule, Finding, ScanReport, Totals, Severity (pydantic)
-│   │   ├── rules.py           # YAML -> Rule loading + strict validation
-│   │   ├── filesystem.py      # safe dir_size, bounded walk, excludes, symlinks
-│   │   ├── scanner.py         # discovery -> measurement -> classification
-│   │   ├── analyzer.py        # specialized enrichment + aggregation
-│   │   └── format.py          # format_bytes / format_ago
-│   ├── rules/                 # one declarative rule per YAML file (packaged)
-│   │   ├── node-modules.yaml
-│   │   ├── npm-cache.yaml
-│   │   ├── ...
-│   └── cli/                   # presentation only
-│       ├── main.py
-│       └── output.py          # human-readable + JSON renderers
-└── tests/
+dev-macos-clean/
+├── package.json            # scripts (start, scan, test), `devclean` bin, Electron dev dependency
+├── rules/                  # one declarative rule per JSON file (data, not code)
+│   ├── node-modules.json
+│   ├── xcode-derived-data.json
+│   └── ...
+├── core/                   # domain logic: no UI, never deletes anything
+│   ├── index.cjs           # public API: loadRules, scan, formatBytes, formatAgo
+│   ├── rules.cjs           # JSON -> rule loading + strict validation
+│   ├── filesystem.cjs      # dirSize, bounded walk, glob/fnmatch, excludes, symlink safety
+│   ├── scanner.cjs         # discovery -> measurement -> classification -> report
+│   ├── analyzer.cjs        # per-rule enrichers + totals
+│   ├── format.cjs          # human formatting (bytes, relative time)
+│   ├── test-support.cjs    # temp trees for tests
+│   └── *.test.cjs
+├── cli/
+│   ├── devclean.cjs        # `devclean scan` (human text or --json)
+│   └── devclean.test.cjs
+└── desktop/                # Electron app
+    ├── main.cjs            # main process: window, IPC handlers, confirmation dialogs
+    ├── scan.cjs            # runs core/ in a worker thread (main process never blocks)
+    ├── cleanup.cjs         # cleanup policy: allowlist, identity checks, move to Trash
+    ├── preload.cjs         # minimal bridge exposed to the page
+    ├── index.html, renderer.js, style.css   # sandboxed UI, no Node access
+    └── *.test.cjs
 ```
 
-Deviation from the original sketch, on purpose: rules live *inside* the package
-(`src/devclean/rules/`) so they work identically from a checkout and from an
-installed wheel, and the directory is flat because the `category` already lives
-in the YAML — no duplication of information.
+How a scan flows through the app:
+
+1. `renderer.js` calls `window.devclean.scan()`; `preload.cjs` forwards it over IPC.
+2. `main.cjs` asks `scan.cjs`, which starts a worker thread that runs
+   `core.scan(core.loadRules(), {globalScan: true})` and posts the report back
+   (5-minute timeout).
+3. `cleanup.prepare()` marks each finding `cleanup_allowed` / `cleanup_review` /
+   `auto_clean` against its own allowlist and records the identity (inode, mtime)
+   of every cleanable path.
+4. On cleanup, the selection is checked again (token, allowlist, identity,
+   no symlinks), confirmed in a native dialog, and moved to the Trash.
+
+The scanner (`rules/` + `core/`) decides **what exists**; `desktop/cleanup.cjs`
+decides **what may be moved**. The two are separate on purpose: a broad or
+mistaken rule can make the scanner show more, but never makes the app delete more.
 
 ### Rule schema
 
-```yaml
-id: xcode-derived-data          # unique slug [a-z0-9-]
-name: Xcode Derived Data        # human label
-category: xcode                 # groups rules; also filters `--category`
-severity: SAFE                  # SAFE | REVIEW | DANGER (see safety model)
-reclaimable: true               # can the content be recreated?
-description: >-                 # what this artifact is
-  Build products, module caches and build logs generated by Xcode at build time.
-paths:                          # direct targets: exact path or glob
-  - "~/Library/Developer/Xcode/DerivedData"
-rebuild:                        # how to recreate it (informational only, never executed)
-  description: Xcode regenerates this automatically the next time a project is built.
+```json
+{
+  "id": "xcode-derived-data",
+  "name": "Xcode Derived Data",
+  "category": "xcode",
+  "severity": "SAFE",
+  "reclaimable": true,
+  "description": "Build products, module caches and build logs generated by Xcode at build time.",
+  "paths": ["~/Library/Developer/Xcode/DerivedData"],
+  "rebuild": {
+    "description": "Xcode regenerates this automatically the next time a project is built.",
+    "commands": []
+  }
+}
 ```
+
+- `id`, `category` — slugs `[a-z0-9-]`; `category` groups rules and filters `--category`.
+- `severity` — `SAFE` | `REVIEW` | `DANGER` (see safety model).
+- `reclaimable` — can the content be recreated?
+- `rebuild` — how to recreate it. Informational only, commands are never executed.
 
 Discovery primitives:
 
 - `paths` — probed directly, no walking. Supports `~`, `$ENV`, and globs
   (e.g. `~/.android/avd/*.avd` yields one finding per AVD).
 - `patterns` — discovered by a bounded walk for templates like `**/node_modules`.
+- `markers` — optional, for `patterns` only: the match counts only when its
+  parent directory contains one of these files (e.g. `target` next to `Cargo.toml`).
 
-Rule files are strictly validated (`extra="forbid"` catches typos, ids must be
+Rule files are strictly validated (unknown keys are rejected, ids must be
 unique slugs, severity must be one of the three values, at least one of
-`paths`/`patterns` required). **Contributors add scanners by dropping in a YAML
+`paths`/`patterns` required). **Contributors add scanners by dropping in a JSON
 file** — no code changes needed. Specialized logic registers by rule id in
-`core/analyzer.py` (see `ENRICHERS`, e.g. `node-modules`).
+`core/analyzer.cjs` (see `ENRICHERS`, e.g. `node-modules`).
 
 ## Installation (development)
 
-Requires Python 3.12+.
+Requires Node.js 22+ (Electron is installed as a dev dependency).
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
-pip install -e ".[dev]"
-```
-
-Run the tests:
-
-```bash
-pytest
+npm ci
+npm test
 ```
 
 ## Usage
+
+`npm run scan --` runs the CLI from the checkout (`npm link` installs a global
+`devclean` command if you prefer).
 
 ```bash
 devclean scan                          # scan the home directory
@@ -122,12 +145,9 @@ devclean scan --category node          # only node rules
 devclean scan --category android
 devclean scan --category xcode
 devclean scan --exclude '*/vendor/*'   # skip paths matching a glob
+devclean scan --global                 # whole local disk, like the app
 devclean scan --json                   # stable machine-readable contract
 ```
-
-> Works on any OS during development — macOS paths are simply absent on other
-> platforms, so the scan returns fewer findings. The default target is a real
-> macOS home directory.
 
 Example output:
 
@@ -174,14 +194,14 @@ DevClean only analyzes storage. Nothing was deleted.
 
 ### JSON contract (`devclean scan --json`)
 
-Stable shape intended for the future desktop UI (`schema_version: 1`):
+Stable shape, also what the desktop app receives (`schema_version: 1`):
 
 ```json
 {
   "schema_version": 1,
   "scanned_at": "2026-09-24T12:00:00Z",
   "roots": ["/Users/me"],
-  "options": {"max_depth": 6, "max_findings": 200, "excludes": [], "categories": []},
+  "options": {"max_depth": 6, "max_findings": 500, "excludes": [], "categories": []},
   "totals": {
     "findings": 12,
     "bytes": 56119758848,
@@ -212,21 +232,22 @@ Stable shape intended for the future desktop UI (`schema_version: 1`):
 
 - **Explicit paths are probed, not walked.** Pattern discovery is the only
   thing that walks, and it is a bounded BFS: `max_depth` (default 6) from the
-  home directory, with caps on visited directories (25,000) and findings (200).
+  home directory, with caps on visited directories (25,000) and findings (500).
 - **Never enters**: hidden dirs (`.git` included), symlinks (loop-proof),
   `Library`, `Applications`, `Music`, `Movies`, `Pictures`, `node_modules`,
   `Pods`, `DerivedData`, `build`, `target`.
 - **`node_modules` is matched and then not re-entered** — nested copies are
   intentionally invisible.
-- **Size**: `dir_size` walks with `scandir`, never follows symlinks, counts
+- **Size**: `dirSize` walks with `readdir`, never follows symlinks, counts
   per-entry permission errors and continues, and caps entries per directory
   (500,000). A capped measurement is reported as `size_complete: false`.
 - **`last_modified`** is the mtime of the directory itself (a cheap proxy for
   "last used") — computing the newest mtime inside would be much slower.
 - **One problematic directory never aborts a scan**: permission and IO errors
   are logged and collected in `report.warnings`, when meaningful.
-- Scans are single-threaded and sequential. Parallelism is deliberately
-  deferred (see Roadmap) — the walk caps already bound the work.
+- Scans are synchronous and sequential inside one worker thread, so the
+  Electron main process stays responsive. Parallelism is deliberately deferred —
+  the walk caps already bound the work.
 
 ## Roadmap
 
@@ -234,8 +255,8 @@ Stable shape intended for the future desktop UI (`schema_version: 1`):
   and Android (Gradle cache, system images, AVDs). Analysis only, no deletion.
 - **Phase 2 (available in Electron)** — Selected known regenerable caches moved
   to Trash after native confirmation, with path and identity validation.
-- **Phase 3 (development interface available)** — Electron desktop app consuming the Python core
-  through the JSON contract.
+- **Phase 3 (development interface available)** — Electron desktop app running
+  the core in-process (worker thread). Python scanner ported to Node.
 - **Phase 4** — Advanced scanners: Docker, Flutter, Python (venvs, pip cache),
   Rust `target`, Maven, Homebrew, JetBrains, VSCode.
 - **Phase 5** — Developer Storage Intelligence: old project detection,
@@ -250,21 +271,55 @@ Stable shape intended for the future desktop UI (`schema_version: 1`):
   disk-size differences are expected).
 - CLI is analysis only. Desktop cleanup uses Trash for authorized low-risk
   artifacts; no permanent deletion, symlink following or parallel scanning.
-- Windows development is supported for the code and tests; a Windows machine
-  simply has no macOS paths to find.
 
 ## Aplicativo macOS (Electron)
 
-Interface local em português, conectada ao scanner Python real. Oferece busca,
+Interface local em português, que roda o scanner do `core/` direto no app. Oferece busca,
 filtros por ferramenta e risco, ordenação, detalhes de reconstrução,
 Mostrar no Finder, exportação JSON e limpeza de caches conhecidos via Lixeira.
 
+### Início rápido
+
 ```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -e ".[dev]"
 npm ci
-npm start
+npm start       # abre o app e já inicia a análise
 ```
+
+O app analisa o Mac assim que abre. Depois:
+
+- **Limpeza automática** — um clique (mais a confirmação do macOS) envia à
+  Lixeira apenas o que se recria sozinho, sem passo manual nem trabalho local:
+  DerivedData, caches do Simulator, CocoaPods, Homebrew, pip, npm, pnpm, Yarn,
+  Bun, Go build, Gradle, Gradle Wrapper, pub cache, e `node_modules`/`target`
+  de projetos parados há 90+ dias.
+- **Selecionar tudo** — marca tudo que pode ir para a Lixeira: os itens de
+  baixo risco fora da automática (projetos ativos, caches de IDE, Device
+  Support, Playwright, módulos do Go, registro do Cargo) e os itens **Revisar**
+  que podem ser movidos com segurança (caches e logs de apps, Android system
+  images, AVDs, Xcode Archives, repositório Maven). A confirmação lista os
+  itens para revisar separadamente. Itens dentro de uma pasta já selecionada
+  são ignorados.
+- Continuam bloqueados, com o motivo na própria linha: a pasta Downloads
+  inteira, o disco do Docker, os Simuladores (use os comandos em Detalhes),
+  pacotes globais, pastas que o macOS não deixou ler por completo e os
+  arquivos do próprio DevClean.
+
+Depois, esvazie a Lixeira para liberar o espaço.
+
+Sem interface: `npm run scan` (ou `npm run scan -- --category xcode`).
+
+### O que é detectado
+
+| Ferramenta | Limpeza com um clique (baixo risco) | Só para revisão |
+| --- | --- | --- |
+| Xcode / iOS | DerivedData, Device Support, caches do Simulator, CocoaPods | Simuladores (`xcrun simctl delete unavailable`), Archives |
+| Node.js | `node_modules`, npm, pnpm, Yarn, Bun, navegadores do Playwright | |
+| Android / Java | Gradle caches, Gradle Wrapper | System images, AVDs, repositório Maven |
+| Rust / Go / Python / Dart | `target/` de projetos Cargo, registro Cargo, Go build e módulos, pip, pub cache | |
+| IDEs / outros | Caches JetBrains e Android Studio, Homebrew | Docker (`docker system prune`), caches de apps, logs, Downloads |
+
+Para incluir uma nova ferramenta, adicione um JSON em `rules/` e,
+se a limpeza for de baixo risco, o caminho fixo em `desktop/cleanup.cjs`.
 
 O aplicativo analisa globalmente o disco local: pastas de usuários, projetos e
 caches conhecidos, além de Downloads e logs para revisão. Não há seletor de pasta.
@@ -276,8 +331,8 @@ Acesso depende das permissões do macOS. Avisos indicam resultados parciais.
 A CLI oferece `devclean scan --global` para a mesma descoberta.
 
 Marque itens regeneráveis e use **Enviar à Lixeira**. A confirmação nativa lista
-os caminhos e o tamanho. Caches desconhecidos, Downloads, logs, SDKs e AVDs
-aparecem para revisão, sem limpeza automática. Os arquivos do próprio DevClean
+os caminhos e o tamanho. Caches de apps, logs, SDKs e AVDs podem ser
+selecionados manualmente, nunca entram na limpeza automática. Os arquivos do próprio DevClean
 são protegidos. Caminhos e identidade dos diretórios são revalidados antes da
 limpeza; links simbólicos, relatórios desatualizados e alvos não autorizados são
 rejeitados. Feche builds e ferramentas antes de limpar suas dependências.
@@ -290,8 +345,8 @@ O renderer usa sandbox, isolamento de contexto e uma ponte IPC com operações
 específicas. Caminhos enviados ao Finder vêm exclusivamente do último relatório.
 Não há servidor HTTP ou conteúdo remoto na interface.
 
-Esta versão executa pelo checkout; ainda não inclui instalador `.dmg`, Python
-embutido, assinatura ou notarização. Para outro interpretador, defina
-`DEVCLEAN_PYTHON` com o caminho absoluto do Python que tem o pacote instalado.
+Esta versão executa pelo checkout; ainda não inclui instalador `.dmg`,
+assinatura ou notarização. Como não há mais Python, empacotar o app não exige
+embutir nenhum interpretador.
 
-Validação: `.venv/bin/python -m pytest` e `npm test`.
+Validação: `npm test` (core, CLI e Electron, com `node --test`).
