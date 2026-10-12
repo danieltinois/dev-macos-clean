@@ -27,7 +27,19 @@ function status(text: string, error=false) {stopSpinner();$('status').textConten
 const filters = (): Filters => ({query: value('search'), category: value('category'), severity: value('severity')});
 const filtered = () => Boolean(value('search') || value('category') || value('severity'));
 const shown = () => report ? visible(report.findings, filters()) : [];
-const cat = createMascot(button('cat'), $('cat-art'), $('cat-says'));
+const cat = createMascot(button('cat'), $('cat-art'), $('cat-says'), tips);
+// Things the cat brings up between tasks, based on the last report.
+function tips(): string[] {
+  const list = ['Clique numa ferramenta no gráfico para filtrar.', 'Lembre de esvaziar a Lixeira para liberar espaço de verdade.', 'Psiu… pode me fazer carinho, é só clicar.'];
+  if (!report) return list;
+  const [top, size] = Object.entries(report.totals.by_category).sort(([, a], [, b]) => b - a)[0] ?? [];
+  if (top) list.push(`${names[top] || top} ocupa ${bytes(size!)}. Vale uma olhada!`);
+  const auto = sum(report.findings.filter(f => f.auto_clean));
+  if (auto) list.push(`A limpeza automática libera ${bytes(auto)} com um clique.`);
+  const stale = report.findings.filter(isStale);
+  if (stale.length) list.push(`${stale.length} projeto(s) parado(s) há 90+ dias: ${bytes(sum(stale))} em dependências.`);
+  return list;
+}
 
 // Braille spinner on the scan button and status line, plus a ░▒▓█ sweep in the chart.
 let spinner: ReturnType<typeof setInterval> | null = null, stopSweep: (() => void) | null = null;
@@ -54,7 +66,7 @@ function breakdown() {
     const row = node('button', undefined, `bar-row${c === active ? ' active' : ''}`), chart = node('span', undefined, 'bar-chart');
     row.type = 'button';row.setAttribute('aria-pressed', String(c === active));row.title = `Mostrar só ${names[c] || c}`;
     row.append(node('span', names[c] || c, 'bar-label'), chart, node('span', bytes(size), 'bar-size'));
-    row.onclick = () => {$<HTMLSelectElement>('category').value = c === active ? '' : c;update();};
+    row.onclick = () => {$<HTMLSelectElement>('category').value = c === active ? '' : c;update();cat.react(c === active ? 'Mostrando tudo de novo.' : `Só ${names[c] || c} agora: ${bytes(size)}.`);};
     growBar(chart, size, max, 20, 'bar-fill', i * 40);
     return row;
   }));
@@ -120,9 +132,17 @@ function selectWhere(predicate: (f: CleanupFinding) => boolean, items: Indexed[]
   for (const index of pick(items, predicate)) selected.add(index);
   render();selection();
 }
-$('select-safe').onclick=()=>selectWhere(()=>true);
-$('select-stale').onclick=()=>selectWhere(isStale);
-$('select-none').onclick=()=>selectWhere(()=>false);
+// The cat comments on quick selections.
+function selectAndReact(predicate: (f: CleanupFinding) => boolean) {
+  selectWhere(predicate);
+  if (!selected.size) return cat.react('Seleção limpa.');
+  const total = [...selected].reduce((sum, i) => sum + (report?.findings[i]?.size_bytes || 0), 0);
+  const review = [...selected].filter(i => report?.findings[i]?.cleanup_review).length;
+  cat.react(`${selected.size} item(ns), ${bytes(total)}.${review ? ` ${review} para revisar, confere antes!` : ' Pode mandar!'}`);
+}
+$('select-safe').onclick=()=>selectAndReact(()=>true);
+$('select-stale').onclick=()=>selectAndReact(isStale);
+$('select-none').onclick=()=>selectAndReact(()=>false);
 function summary() {
   if (!report) return;
   const total=report.totals.bytes, safe=sum(report.findings.filter(isSafe)), review=total-safe;
