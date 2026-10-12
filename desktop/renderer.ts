@@ -2,6 +2,7 @@ import {BANNER, SPINNER} from '../core/ascii';
 import {createMascot} from './mascot';
 import {countUp, growBar, growStack, leave, reduced, sweep, typeIn} from './motion';
 import {pick, visible, type Filters, type Indexed} from './selection';
+import {createTutorial, tourSeen, CAT_NAME} from './tutorial';
 import type {CleanupFinding, CleanupReport} from './cleanup';
 import type {DevcleanBridge} from './preload';
 
@@ -27,10 +28,15 @@ function status(text: string, error=false) {stopSpinner();$('status').textConten
 const filters = (): Filters => ({query: value('search'), category: value('category'), severity: value('severity')});
 const filtered = () => Boolean(value('search') || value('category') || value('severity'));
 const shown = () => report ? visible(report.findings, filters()) : [];
-const cat = createMascot(button('cat'), $('cat-art'), $('cat-says'), tips);
+const cat = createMascot(button('cat'), $('cat-art'), $('cat-says'), {tips});
 // Things the cat brings up between tasks, based on the last report.
+const tour = createTutorial({
+  onStart: () => cat.set('idle', 'Fui ali te mostrar o app!'),
+  onEnd: () => cat.react(`Voltei! Qualquer coisa, chama o ${CAT_NAME} no Tutorial.`),
+});
+$('tour-open').onclick = () => tour.start();
 function tips(): string[] {
-  const list = ['Clique numa ferramenta no gráfico para filtrar.', 'Lembre de esvaziar a Lixeira para liberar espaço de verdade.', 'Psiu… pode me fazer carinho, é só clicar.'];
+  const list = ['Clique numa ferramenta no gráfico para filtrar.', 'Esqueceu como funciona? O botão Tutorial chama o tour.', 'Lembre de esvaziar a Lixeira para liberar espaço de verdade.', 'Psiu… pode me fazer carinho, é só clicar.'];
   if (!report) return list;
   const [top, size] = Object.entries(report.totals.by_category).sort(([, a], [, b]) => b - a)[0] ?? [];
   if (top) list.push(`${names[top] || top} ocupa ${bytes(size!)}. Vale uma olhada!`);
@@ -123,6 +129,7 @@ $('scan').onclick=async()=>{
     if (safe) cat.set('done',`Achei ${bytes(safe)} para limpar sem medo!`);
     else if (report.findings.length) cat.set('done','Tudo conferido. Veja os itens para revisar.');
     else cat.set('empty','Nada para varrer. Seu Mac está em dia!');
+    if (!tourSeen()) setTimeout(() => {if (!busy) tour.start();}, 1600);
   } catch(e){status((e as Error).message,true);breakdown();cat.set('error','Ops! A análise não terminou.');} finally {stopSpinner();setBusy(false);$('scan').textContent='Analisar novamente';}
 };
 
@@ -170,7 +177,7 @@ function selection() {
   button('auto').disabled = busy || !report?.findings.some(f=>f.auto_clean);
 }
 function setBusy(value: boolean) {
-  busy=value;button('scan').disabled=value;button('export').disabled=value||!report;
+  busy=value;button('scan').disabled=value;button('export').disabled=value||!report;button('tour-open').disabled=value;
   document.body.classList.toggle('busy', value);
   for(const input of $('list').querySelectorAll('input')) input.disabled=value || !report?.findings[Number(input.dataset.index)]?.cleanup_allowed;
   selection();

@@ -23,11 +23,20 @@ const DURATION: Record<Fidget, number> = {blink: 160, look: 1300, ear: 260, tilt
 const PETS = ['prrrr…', 'Mais carinho! prrr…', 'Hmm, aí atrás da orelha…', 'prrr… valeu!'];
 const FPS = 20, TYPE_MS = 32, CHATTER_MS = 22000;
 
-export function createMascot(button: HTMLButtonElement, art: HTMLElement, bubble: HTMLElement, tips: () => string[] = () => []) {
+export interface MascotOptions {
+  // Lines to chat about between tasks.
+  tips?: () => string[];
+  // How to draw a frame (defaults to the full cat with tail and broom).
+  render?: (mood: Mood, pose: Pose) => string;
+  // Milliseconds per typed character.
+  typeMs?: number;
+}
+
+export function createMascot(button: HTMLButtonElement, art: HTMLElement, bubble: HTMLElement, {tips = () => [], render = drawCat, typeMs = TYPE_MS}: MascotOptions = {}) {
   let state: MascotState = 'idle', message = '', frame = 0, last = 0;
   let speech = '', typed = 0, typedAt = 0, spokeAt = 0;
   let fidget: {kind: Fidget; until: number; look: -1 | 1} | null = null, nextFidget = 0;
-  let hopUntil = 0, shakeUntil = 0, purrUntil = 0, pointerLook: -1 | 0 | 1 = 0;
+  let hopUntil = 0, shakeUntil = 0, purrUntil = 0, pointerLook: -1 | 0 | 1 = 0, gaze: -1 | 0 | 1 | null = null;
   const started = performance.now();
 
   // Type `text` into the bubble; the mouth moves while it types.
@@ -51,7 +60,7 @@ export function createMascot(button: HTMLButtonElement, art: HTMLElement, bubble
       t, mouth,
       sweep: speed && !purring ? Math.sin(t * speed) * 0.3 : 0,
       // Pointer wins over idle glances; while sweeping the cat watches its broom.
-      look: pointerLook || (active?.kind === 'look' ? active.look : speed ? 1 : 0),
+      look: gaze ?? (pointerLook || (active?.kind === 'look' ? active.look : speed ? 1 : 0)),
       ear: active?.kind === 'ear',
       tilt: shaking ? (Math.floor(now / 110) % 2 ? 1 : -1) : active?.kind === 'tilt' ? active.look : 0,
       hop: now < hopUntil && Math.floor((hopUntil - now) / 180) % 2 === 1,
@@ -61,12 +70,12 @@ export function createMascot(button: HTMLButtonElement, art: HTMLElement, bubble
 
   function step(now: number) {
     // Typewriter.
-    if (typed < speech.length && now - typedAt >= TYPE_MS) {
-      typed = Math.min(speech.length, typed + Math.floor((now - typedAt) / TYPE_MS));typedAt = now;
+    if (typed < speech.length && now - typedAt >= typeMs) {
+      typed = Math.min(speech.length, typed + Math.floor((now - typedAt) / typeMs));typedAt = now;
       bubble.textContent = speech.slice(0, typed);
     }
-    // Fidgets: one at a time, a random one every couple of seconds.
-    if ((!fidget || now >= fidget.until) && now >= nextFidget && now >= purrUntil) {
+    // Fidgets: one at a time, a random one every couple of seconds, never mid-sentence.
+    if ((!fidget || now >= fidget.until) && now >= nextFidget && now >= purrUntil && typed >= speech.length) {
       const choices = FIDGETS[state];
       const kind = choices[Math.floor(Math.random() * choices.length)]!;
       fidget = {kind, until: now + DURATION[kind], look: Math.random() < 0.5 ? -1 : 1};
@@ -80,7 +89,7 @@ export function createMascot(button: HTMLButtonElement, art: HTMLElement, bubble
     }
     if (now >= purrUntil && speech.startsWith('prr') && typed >= speech.length && now - spokeAt > 2600) speak(message, now);
     const [mood, p] = pose(now);
-    art.textContent = drawCat(mood, p);
+    art.textContent = render(mood, p);
   }
 
   function tick(now: number) {
@@ -90,7 +99,7 @@ export function createMascot(button: HTMLButtonElement, art: HTMLElement, bubble
   }
   function start() {
     cancelAnimationFrame(frame);
-    if (reduced()) {const [mood, p] = pose(started);art.textContent = drawCat(mood, {...p, mouth: 0, sweep: 0});}
+    if (reduced()) {const [mood, p] = pose(started);art.textContent = render(mood, {...p, mouth: 0, sweep: 0});}
     else frame = requestAnimationFrame(tick);
   }
 
@@ -110,6 +119,13 @@ export function createMascot(button: HTMLButtonElement, art: HTMLElement, bubble
     reactedAt = now;hopUntil = now + 360;speak(text, now);if (reduced()) start();
   }
 
+  // Force where the eyes look (e.g. at what the tutorial is pointing to); null lets them wander.
+  function lookAt(direction: -1 | 0 | 1 | null) {gaze = direction;}
+  function stop() {cancelAnimationFrame(frame);}
+  // Whether a line is still being typed; finish() shows the rest at once.
+  const talking = () => typed < speech.length;
+  function finish() {typed = speech.length;bubble.textContent = speech;}
+
   // Petting: purr and say something, then go back to what it was saying.
   button.onclick = () => {
     const now = performance.now();
@@ -123,5 +139,5 @@ export function createMascot(button: HTMLButtonElement, art: HTMLElement, bubble
     pointerLook = Math.abs(dx) < box.width * 0.35 ? 0 : dx < 0 ? -1 : 1;
   });
   document.addEventListener('pointerleave', () => {pointerLook = 0;});
-  return {set, react};
+  return {set, react, lookAt, stop, talking, finish};
 }

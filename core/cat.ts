@@ -135,9 +135,9 @@ export function drawCat(mood: Mood = 'idle', pose: Pose = {}): string {
   return canvas.map(row => row.join('')).join('\n');
 }
 
-// Head-and-chest portrait without the broom or tail, for compact output (the CLI).
-export function portrait(mood: Mood = 'idle'): string {
-  return drawCat(mood).split('\n').slice(ART_Y, ART_Y + BUST_ROWS).map(line => line.slice(ART_X, ART_X + ART_WIDTH).trimEnd()).join('\n');
+// Head-and-chest portrait without the broom or tail (the CLI and the tutorial guide).
+export function portrait(mood: Mood = 'idle', pose: Pose = {}): string {
+  return drawCat(mood, pose).split('\n').slice(ART_Y, ART_Y + BUST_ROWS).map(line => line.slice(ART_X, ART_X + ART_WIDTH).trimEnd()).join('\n');
 }
 
 // `frame` with a speech bubble saying `text` on its right, centered on row `row`.

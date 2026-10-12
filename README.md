@@ -301,7 +301,8 @@ bun install
 bun start       # compila para dist/, abre o app e já inicia a análise
 ```
 
-O app analisa o Mac assim que abre. Depois:
+O app analisa o Mac assim que abre. Na primeira vez, o Floco (o gato mascote) faz um
+tour guiado pelo app; para rever, use **Tutorial** no topo. Depois:
 
 - **Limpeza automática** — um clique (mais a confirmação do macOS) envia à
   Lixeira apenas o que se recria sozinho, sem passo manual nem trabalho local:
