@@ -2,14 +2,13 @@ import {test} from 'bun:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import path from 'node:path';
-import {STEPS, placeGuide, type Box} from './tutorial';
+import {STEPS, placeGuide, stepText, type Box} from './tutorial';
 
 const html = readFileSync(path.join(import.meta.dirname, 'index.html'), 'utf8');
 const renderer = readFileSync(path.join(import.meta.dirname, 'renderer.ts'), 'utf8');
 
 test('every step points at something that exists in the page', () => {
-  for (const {target} of STEPS) {
-    if (!target) continue;
+  for (const target of STEPS.flatMap(step => [step.target ?? []].flat())) {
     for (const token of target.split(/\s+/)) {
       const name = token.slice(1);
       if (token.startsWith('#')) assert.ok(html.includes(`id="${name}"`), `${target}: no #${name} in index.html`);
@@ -22,7 +21,13 @@ test('every step points at something that exists in the page', () => {
 test('the tour opens and closes centered, and every line fits the bubble', () => {
   assert.equal(STEPS[0]!.target, undefined);
   assert.equal(STEPS.at(-1)!.mood, 'done');
-  for (const step of STEPS) assert.ok(step.text.length > 20 && step.text.length <= 190, step.text);
+  for (const step of STEPS) for (const scanned of [false, true]) {
+    const text = stepText(step, {scanned});
+    assert.ok(text.length > 20 && text.length <= 190, text);
+  }
+  // Before the first scan the tour promises to start it; afterwards it doesn't.
+  assert.match(stepText(STEPS.at(-1)!, {scanned: false}), /começo a análise/);
+  assert.doesNotMatch(stepText(STEPS.at(-1)!, {scanned: true}), /começo a análise/);
 });
 
 const VIEW = {width: 1280, height: 850}, GUIDE = {width: 560, height: 230};

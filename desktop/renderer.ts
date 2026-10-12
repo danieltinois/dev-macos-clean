@@ -31,8 +31,13 @@ const shown = () => report ? visible(report.findings, filters()) : [];
 const cat = createMascot(button('cat'), $('cat-art'), $('cat-says'), {tips});
 // Things the cat brings up between tasks, based on the last report.
 const tour = createTutorial({
+  context: () => ({scanned: Boolean(report)}),
   onStart: () => cat.set('idle', 'Fui ali te mostrar o app!'),
-  onEnd: () => cat.react(`Voltei! Qualquer coisa, chama o ${CAT_NAME} no Tutorial.`),
+  // On first launch the tour runs before anything else; the first scan starts when it ends.
+  onEnd: () => {
+    if (!report && !busy) $('scan').click();
+    else cat.react(`Voltei! Qualquer coisa, chama o ${CAT_NAME} no Tutorial.`);
+  },
 });
 $('tour-open').onclick = () => tour.start();
 function tips(): string[] {
@@ -129,7 +134,6 @@ $('scan').onclick=async()=>{
     if (safe) cat.set('done',`Achei ${bytes(safe)} para limpar sem medo!`);
     else if (report.findings.length) cat.set('done','Tudo conferido. Veja os itens para revisar.');
     else cat.set('empty','Nada para varrer. Seu Mac está em dia!');
-    if (!tourSeen()) setTimeout(() => {if (!busy) tour.start();}, 1600);
   } catch(e){status((e as Error).message,true);breakdown();cat.set('error','Ops! A análise não terminou.');} finally {stopSpinner();setBusy(false);$('scan').textContent='Analisar novamente';}
 };
 
@@ -202,6 +206,6 @@ async function clean(automatic: boolean) {
   } catch(e){status((e as Error).message,true);cat.set('error','Ops! Não consegui limpar.');} finally {setBusy(false);}
 }
 typeIn($('logo'), BANNER);
-cat.set('idle','Oi! Já vou dar uma olhada no seu Mac.');
-// Start the first scan right away: there is nothing to configure.
-$('scan').click();
+// First launch: Floco shows the app before the first scan. Afterwards, scan right away: there is nothing to configure.
+if (tourSeen()) {cat.set('idle','Oi! Já vou dar uma olhada no seu Mac.');$('scan').click();}
+else {cat.set('idle',`Oi! Eu sou o ${CAT_NAME}.`);tour.start();}

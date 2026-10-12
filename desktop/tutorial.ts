@@ -4,26 +4,34 @@ import {portrait} from '../core/cat';
 import {createMascot, type MascotState} from './mascot';
 import {reduced} from './motion';
 
+export interface TourContext {
+  // Whether a scan already ran. On first launch the tour comes before the first scan.
+  scanned: boolean;
+}
 export interface Step {
-  // CSS selector of the element to highlight; none means a centered step.
-  target?: string;
-  text: string;
+  // CSS selectors of the element to highlight, first visible one wins; none means a centered step.
+  target?: string | string[];
+  text: string | ((context: TourContext) => string);
   mood?: MascotState;
 }
 
 export const CAT_NAME = 'Floco';
 export const STEPS: Step[] = [
   {text: `Oi! Eu sou o ${CAT_NAME}, o gato da faxina. Vou te mostrar o DevClean num minutinho.`},
-  {target: '#scan', text: 'Aqui eu vasculho o Mac atrás de caches, node_modules e outras tralhas de dev. Eu já faço isso sozinho quando o app abre.'},
+  {target: '#scan', text: ({scanned}) => scanned
+    ? 'Aqui eu vasculho o Mac atrás de caches, node_modules e outras tralhas de dev. Eu já faço isso sozinho quando o app abre.'
+    : 'Esse botão vasculha o Mac atrás de caches, node_modules e outras tralhas de dev. Assim que a gente terminar, eu faço a primeira análise.'},
   {target: '.stats', text: 'O resumo: quanto eu achei, quanto dá pra limpar sem medo e quanto é melhor você conferir antes.'},
   {target: '.breakdown', text: 'Espaço por ferramenta, do maior pro menor. Clica numa barra que eu filtro a lista pra você.'},
   {target: '.filters', text: 'Também dá pra buscar por nome ou caminho, filtrar por risco e mudar a ordem.'},
-  {target: '#list .row', text: 'Cada linha é um achado: ferramenta, caminho, risco e tamanho. Clica pra ver detalhes e como recriar. Cadeado quer dizer que eu não deixo limpar, e eu explico o porquê.'},
+  {target: ['#list .row', '#list'], text: 'Cada linha é um achado: ferramenta, caminho, risco e tamanho. Clica pra ver detalhes e como recriar. Cadeado quer dizer que eu não deixo limpar, e eu explico o porquê.'},
   {target: '.quick', text: '"Selecionar tudo" pega só o que está nos filtros. "Projetos parados" pega dependências de projetos sem mexer há 90+ dias.'},
   {target: '#clean', text: 'Escolheu? Manda pra Lixeira. Eu sempre peço confirmação, e dá pra restaurar pelo Finder.'},
   {target: '#auto', text: 'Com pressa? A limpeza automática leva só caches que se recriam sozinhos e dependências de projetos parados.'},
   {target: '.mascot', text: 'E aqui é o meu cantinho. Quando a gente terminar eu volto pra cá, fico dando dicas e aceito carinho.'},
-  {target: '#tour-open', text: 'Pronto! Se quiser rever, é só clicar em Tutorial. Boa faxina!', mood: 'done'},
+  {target: '#tour-open', mood: 'done', text: ({scanned}) => scanned
+    ? 'Pronto! Se quiser rever, é só clicar em Tutorial. Boa faxina!'
+    : 'Pronto! Agora eu começo a análise. Se quiser rever o tour, é só clicar em Tutorial.'},
 ];
 
 export interface Box {left: number; top: number; width: number; height: number}
@@ -51,16 +59,19 @@ function markSeen() {try {localStorage.setItem(SEEN_KEY, '1');} catch {/* not pe
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
-export function createTutorial({onStart, onEnd}: {onStart?: () => void; onEnd?: () => void} = {}) {
+export const stepText = (step: Step, context: TourContext) => typeof step.text === 'function' ? step.text(context) : step.text;
+
+export function createTutorial({onStart, onEnd, context = () => ({scanned: true})}: {onStart?: () => void; onEnd?: () => void; context?: () => TourContext} = {}) {
   const root = $('tour'), spot = $('tour-spot'), guide = $('tour-guide');
   const guideCat = createMascot($<HTMLButtonElement>('tour-cat'), $('tour-cat-art'), $('tour-text'), {render: portrait, typeMs: 20});
   let index = 0, open = false, returnFocus: HTMLElement | null = null;
 
   function visibleTarget(step: Step) {
-    const el = step.target ? document.querySelector<HTMLElement>(step.target) : null;
-    if (!el) return null;
-    const rect = el.getBoundingClientRect();
-    return rect.width && rect.height ? el : null;
+    for (const selector of [step.target ?? []].flat()) {
+      const el = document.querySelector<HTMLElement>(selector), rect = el?.getBoundingClientRect();
+      if (el && rect!.width && rect!.height) return el;
+    }
+    return null;
   }
   function layout() {
     if (!open) return;
@@ -82,10 +93,11 @@ export function createTutorial({onStart, onEnd}: {onStart?: () => void; onEnd?: 
     const step = STEPS[index]!;
     visibleTarget(step)?.scrollIntoView({block: 'center', behavior: reduced() ? 'auto' : 'smooth'});
     $('tour-progress').textContent = `${index + 1} / ${STEPS.length}`;
-    $('tour-sr').textContent = step.text;
+    const text = stepText(step, context());
+    $('tour-sr').textContent = text;
     $<HTMLButtonElement>('tour-back').disabled = index === 0;
     $('tour-next').textContent = index === STEPS.length - 1 ? 'Concluir' : 'Próximo';
-    guideCat.set(step.mood ?? 'idle', step.text);
+    guideCat.set(step.mood ?? 'idle', text);
     // Lay out now and again once smooth scrolling settles.
     requestAnimationFrame(layout);setTimeout(layout, 450);
   }
