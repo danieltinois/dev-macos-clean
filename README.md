@@ -1,43 +1,15 @@
-# DevClean
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/floco-dark.png" />
+    <img src="assets/floco-light.png" width="220" alt="Floco, the DevClean cat" />
+  </picture>
+</p>
 
-```
-                                           x@
- @@@#                                  ~%@@@%
- #@@@%@@               =             X##@%@@
-  @@@#XX#%#X#%@@@%%#x###X*X#X#%%%%%%XXxxx%%%     *
-  +%##Xx***+*x#@@%#XXx*xxxXXxX%@@%X**++*X#%
-   X#Xx**+=~;~=+XXx***+******xX##x==;~+*X%%
-    #X*+====-;~~=+**=++++=++*++=-=-;-=+xX%@
-    @Xxx+=~;;-;=+**+++++++++*+===;;;-~=+x%@          +
-    @%x+~~-~-~;;~=+===++=+=++==~---;;;~+X@@
-    @@x*=++*+=~-~++++=++=*++=~---~~~~~=+x@%
-    @%X+==+*+=~===**+=++=+*++~--~=+*****X%%     .
-   ~@@%*~~~~=~-~~~*+==++==++~~~~=+=+==+x#%#
-    @@%x=~~~~=~-~~*+=+++++*=-~~==~~~==*X#X- x
-    #X#x+=++==~~~=*+++++=+*~--~~~~~~~+xXx*;-X
-     X##+++=+*=~-~=*+++==*+--~=====~=*XX*= =x#
-     +X#x*==++====+*+++=+*==~=+*+=+++*x+=- =xX
-      x#X*==+**+==+*+*****+++*x**+++xx*=~, ,xX#
-      ;xX#=--=**+~=+xxXxx*=+*x*=~-=*x*=~~:  *x##        ╭────────────────╮
-      *+X%%;..^^^^.~xXXx+=~,.^^^^.xX+~~=~,  ~xX#=      <│ Hi, I'm Floco! │
-       ++X#%+=+==+=++xx*~='+=+==+=+x=~~~-~= ,*xX-       ╰────────────────╯
-        ~=X#%@@%*:~;=**=~=';xxX%@%X+-;;-=*=^ =*X*
-      x*~;-*#%@@%*~-==+=~=*#@@@%#x~;;;-+**+- =*x+
-      %#x-,^=xXXx=;~*Xx*-~x####x~;;--=*xxx+- ~*xX
-      ##X+;`,***x+-~**x*-=*xx*=;`,;=+**xx*+- =*x*
-      x##x=::*xxxx--++*=;*xx**=,:-=***+**+~;,=*X
-      ~#Xx*~;;=x**x,:;;,=x**+~::-=++++++++~;~+*X
-       ##Xx*-;::;-~=^.`++~-;:,:-=+++++++++~;++*x
-       X#Xx++=~-;;;:(    );---~==++++++++=--++*=
-       -XXxxX**+===++`--'++++*++=+==+++++-,=*++
-         xX#Xxx*+++**xxxxx*x*x*+*++++**+~,:+++*-
-         ~***x*+++++++*****+++++***++++~;^-**++~
-         ;+*+=+===============+++*++=~--;,+x*++-
-          +*++==~~~~~=~~~~=~~========~~=;;*x+==+-
-          ;++++======~=====~===+++++*+=-,~++===*x=
-```
+<h1 align="center">DevClean</h1>
 
-*Floco, the mascot, sweeps up after your dev tools and guides you through the app on first launch.*
+<p align="center">
+  <em>Floco, the mascot, sweeps up after your dev tools and guides you through the app on first launch.</em>
+</p>
 
 Analyze macOS developer storage: **what** is using space, **which tool** created
 it, **how much** it uses, **whether** it can be recreated, **how risky** it is to
