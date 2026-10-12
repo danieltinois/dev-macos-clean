@@ -3,6 +3,7 @@ import {afterEach, test} from 'bun:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import {main} from './devclean';
+import {BANNER} from '../core/ascii';
 import {buildTree, tempDir, removeTempDirs} from '../core/test-support';
 import type {Finding} from '../core';
 
@@ -53,6 +54,10 @@ test('human output', () => {
   const {code, stdout} = run(['scan', '--home', makeHome()]);
   assert.equal(code, 0);
   for (const text of ['Node.js', 'Xcode', 'Android', 'Risk:      SAFE', 'Risk:      REVIEW', '100 B', 'Detected:', 'SAFE: ', 'package_manager: npm', 'Nothing was deleted.']) assert.ok(stdout.includes(text), text);
+  assert.ok(stdout.startsWith(BANNER));
+  // The largest finding (Xcode, 500 B) fills its bar; categories share one scale.
+  assert.ok(stdout.includes(`  Size:      ${'█'.repeat(16)}  500 B`));
+  assert.match(stdout, /By category ─+\n {2}Android {2}█+░+ {2}20 B\n {2}Node\.js {2}█+░+ {2}100 B\n {2}Xcode {4}█{24} {2}500 B/);
 });
 
 test('category filter', () => {

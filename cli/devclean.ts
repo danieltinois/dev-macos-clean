@@ -2,13 +2,14 @@
 // devclean CLI: analysis only, nothing is ever deleted from here.
 import path from 'node:path';
 import {parseArgs} from 'node:util';
-import {loadRules, RuleError, SEVERITIES, scan, formatBytes, formatAgo, type Report, type Rule} from '../core';
+import {loadRules, RuleError, SEVERITIES, scan, formatBytes, formatAgo, BANNER, bar, type Report, type Rule} from '../core';
 import {version} from '../package.json';
 
 interface Output {write(text: string): unknown}
 
 const CATEGORY_LABELS: Record<string, string> = {node: 'Node.js', xcode: 'Xcode', android: 'Android'};
-const LINE = '-'.repeat(40);
+const WIDTH = 52;
+const LINE = '─'.repeat(WIDTH);
 const USAGE = `usage: devclean scan [ROOT ...] [options]
 
 Analyze macOS developer storage: what uses space and what can be reclaimed.
@@ -28,17 +29,29 @@ function categoryLabel(category: string) {
   return CATEGORY_LABELS[category] ?? category.replace(/-/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
 }
 
+// `Label ──────…` section header, padded to the banner width.
+function heading(label: string) {return `${label} ${'─'.repeat(Math.max(3, WIDTH - label.length - 1))}`;}
+
+// `  label   ████░░░░  1.2 GB` rows sharing one scale.
+function bars(entries: [string, number][]) {
+  const max = Math.max(0, ...entries.map(([, bytes]) => bytes));
+  const pad = Math.max(...entries.map(([label]) => label.length)) + 2;
+  return entries.map(([label, bytes]) => `  ${label.padEnd(pad)}${bar(bytes, max, 24)}  ${formatBytes(bytes)}`);
+}
+
 export function renderHuman(report: Report): string {
-  const lines = ['DevClean — developer storage analyzer', ''];
+  const lines = [BANNER, '', 'developer storage analyzer · macOS', ''];
   if (!report.findings.length) lines.push('Scan complete. No findings in the scanned roots.', '');
+  const largest = Math.max(0, ...report.findings.map(finding => finding.size_bytes));
   let current: string | null = null;
   for (const finding of report.findings) {
     if (finding.category !== current) {
+      if (current !== null) lines.push('');
       current = finding.category;
-      lines.push(categoryLabel(current), LINE);
+      lines.push(heading(categoryLabel(current)));
     }
     lines.push('', `${finding.name} — ${finding.path}`);
-    lines.push(`  Size:      ${formatBytes(finding.size_bytes)}${finding.size_complete ? '' : ' (partial)'}`);
+    lines.push(`  Size:      ${bar(finding.size_bytes, largest, 16)}  ${formatBytes(finding.size_bytes)}${finding.size_complete ? '' : ' (partial)'}`);
     if (finding.last_modified) lines.push(`  Modified:  ${formatAgo(new Date(finding.last_modified))}`);
     lines.push(`  Risk:      ${finding.severity}`);
     if (finding.rebuild) lines.push(`  Rebuild:   ${finding.rebuild.description}`);
@@ -47,8 +60,11 @@ export function renderHuman(report: Report): string {
     const pad = Math.max(11, ...keys.map(key => key.length + 2));
     for (const key of keys) lines.push(`  ${(key + ':').padEnd(pad)}${finding.metadata[key]}`);
   }
+  if (report.findings.length) {
+    lines.push('', heading('By category'), ...bars(Object.entries(report.totals.by_category).map(([category, bytes]) => [categoryLabel(category), bytes])));
+    lines.push('', heading('By risk'), ...bars(SEVERITIES.map(severity => [`${severity}:`, report.totals.by_severity[severity] ?? 0])));
+  }
   lines.push('', LINE, `Detected: ${formatBytes(report.totals.bytes)} (${report.totals.findings} finding(s))`);
-  for (const severity of SEVERITIES) lines.push(`${severity}: ${formatBytes(report.totals.by_severity[severity] ?? 0)}`);
   if (report.warnings.length) lines.push('', 'Warnings:', ...report.warnings.map(warning => `  - ${warning}`));
   lines.push('', 'DevClean only analyzes storage. Nothing was deleted.');
   return lines.join('\n');

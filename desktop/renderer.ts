@@ -1,3 +1,4 @@
+import {BANNER, SPINNER, bar} from '../core/ascii';
 import type {CleanupFinding, CleanupReport} from './cleanup';
 import type {DevcleanBridge} from './preload';
 
@@ -18,7 +19,36 @@ const sum = (items: CleanupFinding[]) => items.reduce((total,f)=>total+f.size_by
 const risks = {SAFE:'Baixo risco', REVIEW:'Revisar', DANGER:'Alto risco'};
 function bytes(n: number) {if (!n) return '0 B'; const units = ['B','KB','MB','GB','TB'];const i = Math.min(4,Math.floor(Math.log(n)/Math.log(1024)));return `${(n/1024**i).toLocaleString('pt-BR',{maximumFractionDigits:i ? 1 : 0})} ${units[i]}`;}
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string, cls?: string) {const el = document.createElement(tag);if (text !== undefined) el.textContent = text;if (cls) el.className = cls;return el;}
-function status(text: string, error=false) {$('status').textContent=text;$('status').className=error?'error':'';}
+function status(text: string, error=false) {stopSpinner();$('status').textContent=text;$('status').className=error?'error':'';}
+// Braille spinner on the scan button and status line; a static frame when motion is reduced.
+let spinner: ReturnType<typeof setInterval> | null = null;
+function startSpinner(button: string, text: string) {
+  stopSpinner();
+  let frame = 0;
+  const draw = () => {const f = SPINNER[frame++ % SPINNER.length];$('scan').textContent=`${f} ${button}`;$('status').textContent=`${f} ${text}`;$('status').className='';};
+  draw();
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches) spinner = setInterval(draw, 80);
+}
+function stopSpinner() {if (spinner) clearInterval(spinner);spinner = null;}
+// Text bar split into filled/empty spans so each part gets its own color.
+function meter(el: HTMLElement, value: number, max: number, width: number) {
+  const text = bar(value, max, width), filled = text.indexOf('░') === -1 ? width : text.indexOf('░');
+  el.replaceChildren(node('span', text.slice(0, filled), 'bar-fill'), node('span', text.slice(filled), 'bar-empty'));
+}
+// One block-chart row per tool, largest first, on a shared scale.
+function breakdown() {
+  if (!report) return;
+  const entries = Object.entries(report.totals.by_category).filter(([, size]) => size > 0).sort(([, a], [, b]) => b - a);
+  const section = $('breakdown').parentElement!;
+  section.hidden = !entries.length;
+  const pad = Math.max(0, ...entries.map(([c]) => (names[c] || c).length)) + 2, max = entries[0]?.[1] ?? 0;
+  $('breakdown').replaceChildren(...entries.map(([c, size]) => {
+    const row = node('div', undefined, 'bar-row'), chart = node('span');
+    meter(chart, size, max, 32);
+    row.append(node('span', (names[c] || c).padEnd(pad), 'bar-label'), chart, node('span', `  ${bytes(size)}`, 'bar-size'));
+    return row;
+  }));
+}
 function render() {
   if (!report) return;
   const query = value('search').toLowerCase();
@@ -53,7 +83,7 @@ $('reveal').onclick=async()=>{try{await window.devclean.reveal(activeIndex!);}ca
 for(const id of ['search','category','severity','sort']) $(id).addEventListener(id==='search'?'input':'change',render);
 $('export').onclick=async()=>{try{if(await window.devclean.exportReport()) status('Relatório exportado.');}catch(e){status((e as Error).message,true);}};
 $('scan').onclick=async()=>{
-  setBusy(true);$('scan').textContent='Analisando…';status('Analisando arquivos…');
+  setBusy(true);startSpinner('Analisando…','Analisando arquivos…');
   try {
     report=await window.devclean.scan();selected.clear();summary();$('count').textContent=`${report.totals.findings} artefatos encontrados`;
     $('category').replaceChildren(new Option('Todas as ferramentas',''));
@@ -62,7 +92,7 @@ $('scan').onclick=async()=>{
     $('timestamp').textContent=`Última análise: ${new Date(report.scanned_at).toLocaleString('pt-BR')}`;
     const safe=report.findings.filter(f=>f.cleanup_allowed).reduce((sum,f)=>sum+f.size_bytes,0);
     status(safe ? `Análise concluída · ${bytes(safe)} podem ir para a Lixeira com segurança` : 'Análise concluída');render();selection();
-  } catch(e){status((e as Error).message,true);} finally {setBusy(false);$('scan').textContent='Analisar novamente';}
+  } catch(e){status((e as Error).message,true);} finally {stopSpinner();setBusy(false);$('scan').textContent='Analisar novamente';}
 };
 
 function selectWhere(predicate: (f: CleanupFinding) => boolean) {
@@ -81,9 +111,10 @@ $('select-stale').onclick=()=>selectWhere(isStale);
 $('select-none').onclick=()=>selectWhere(()=>false);
 function summary() {
   if (!report) return;
-  $('total').textContent=bytes(report.totals.bytes);
-  $('safe').textContent=bytes(report.findings.filter(f=>f.cleanup_allowed).reduce((sum,f)=>sum+f.size_bytes,0));
-  $('review').textContent=bytes((report.totals.by_severity.REVIEW||0)+(report.totals.by_severity.DANGER||0));
+  const total=report.totals.bytes, safe=sum(report.findings.filter(f=>f.cleanup_allowed)), review=(report.totals.by_severity.REVIEW||0)+(report.totals.by_severity.DANGER||0);
+  $('total').textContent=bytes(total);$('safe').textContent=bytes(safe);$('review').textContent=bytes(review);
+  meter($('total-bar'),total,total,20);meter($('safe-bar'),safe,total,20);meter($('review-bar'),review,total,20);
+  breakdown();
   const stale=report.findings.filter(isStale);
   $('select-stale').textContent=`Projetos parados (90+ dias)${stale.length?` · ${bytes(sum(stale))}`:''}`;
   const auto=report.findings.filter(f=>f.auto_clean);
@@ -120,5 +151,6 @@ async function clean(automatic: boolean) {
     status(`${result.moved.length} item(ns) na Lixeira · ${bytes(movedBytes)}. Esvazie a Lixeira para liberar espaço.${result.errors.length?' Alguns itens falharam.':''}`, Boolean(result.errors.length));
   } catch(e){status((e as Error).message,true);} finally {setBusy(false);}
 }
+$('logo').textContent=BANNER;
 // Start the first scan right away: there is nothing to configure.
 $('scan').click();
