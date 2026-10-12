@@ -164,42 +164,46 @@ devclean scan --json                   # stable machine-readable contract
 Example output:
 
 ```
-DevClean — developer storage analyzer
+ ____  _______     ______ _     _____    _    _   _
+|  _ \| ____\ \   / / ___| |   | ____|  / \  | \ | |
+| | | |  _|  \ \ / / |   | |   |  _|   / _ \ |  \| |
+| |_| | |___  \ V /| |___| |___| |___ / ___ \| |\  |
+|____/|_____|  \_/  \____|_____|_____/_/   \_\_| \_|
 
-Node.js
-----------------------------------------
+developer storage analyzer · macOS
 
-node_modules — /Users/me/Developer/project-a/node_modules
-  Size:      2.4 GB
+Node.js ────────────────────────────────────────────
+
+Node.js dependencies — /Users/me/Developer/project-a/node_modules
+  Size:      ██░░░░░░░░░░░░░░  2.4 GB
   Modified:  3 months ago
   Risk:      SAFE
   Rebuild:   Run the project's install command (npm install, pnpm install, yarn install, bun install).
-  project:      /Users/me/Developer/project-a
-  package.json: yes
-  lockfile:     package-lock.json
+  project:         /Users/me/Developer/project-a
+  package.json:    yes
+  lockfile:        package-lock.json
   package_manager: npm
 
-Xcode
-----------------------------------------
+Xcode ──────────────────────────────────────────────
 
 Xcode Derived Data — /Users/me/Library/Developer/Xcode/DerivedData
-  Size:      18.7 GB
+  Size:      ██████████░░░░░░  18.7 GB
   Modified:  1 day ago
   Risk:      SAFE
   Rebuild:   Xcode regenerates this automatically the next time a project is built.
 
-Android
-----------------------------------------
+By category ────────────────────────────────────────
+  Android  ████████████████████████  31.2 GB
+  Node.js  ██░░░░░░░░░░░░░░░░░░░░░░  2.4 GB
+  Xcode    ██████████████░░░░░░░░░░  18.7 GB
 
-Android system images — /Users/me/Library/Android/sdk/system-images
-  Size:      31.2 GB
-  Risk:      REVIEW
+By risk ────────────────────────────────────────────
+  SAFE:    ████████████████░░░░░░░░  21.1 GB
+  REVIEW:  ████████████████████████  31.2 GB
+  DANGER:  ░░░░░░░░░░░░░░░░░░░░░░░░  0 B
 
-----------------------------------------
+────────────────────────────────────────────────────
 Detected: 52.3 GB (12 finding(s))
-SAFE: 21.1 GB
-REVIEW: 31.2 GB
-DANGER: 0 B
 
 DevClean only analyzes storage. Nothing was deleted.
 ```
@@ -362,3 +366,7 @@ assinatura ou notarização. Como não há mais Python, empacotar o app não exi
 embutir nenhum interpretador.
 
 Validação: `bun test` (core, CLI e Electron) e `bun run typecheck`.
+
+Mascote: gato em ASCII gerado por `scripts/cat-art.ts` a partir da foto
+["Domestic Cat White"](https://commons.wikimedia.org/wiki/File:Domestic_Cat_White.JPG),
+de JMG2JMG, em domínio público (Wikimedia Commons).

@@ -2,4 +2,6 @@
 export {loadRules, validateRule, RuleError, SEVERITIES} from './rules';
 export {scan, SCHEMA_VERSION} from './scanner';
 export {formatBytes, formatAgo} from './format';
+export {BANNER, SPINNER, bar} from './ascii';
+export {CAT_HEIGHT, CAT_WIDTH, drawCat, portrait, say, type Mood, type Pose} from './cat';
 export type * from './types';
