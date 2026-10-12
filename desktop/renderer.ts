@@ -67,7 +67,7 @@ function breakdown() {
     row.type = 'button';row.setAttribute('aria-pressed', String(c === active));row.title = `Mostrar só ${names[c] || c}`;
     row.append(node('span', names[c] || c, 'bar-label'), chart, node('span', bytes(size), 'bar-size'));
     row.onclick = () => {$<HTMLSelectElement>('category').value = c === active ? '' : c;update();cat.react(c === active ? 'Mostrando tudo de novo.' : `Só ${names[c] || c} agora: ${bytes(size)}.`);};
-    growBar(chart, size, max, 20, 'bar-fill', i * 40);
+    growBar(chart, size, max, 26, 'bar-fill', i * 40);
     return row;
   }));
 }
@@ -147,8 +147,8 @@ function summary() {
   if (!report) return;
   const total=report.totals.bytes, safe=sum(report.findings.filter(isSafe)), review=total-safe;
   countUp($('total'),total,bytes);countUp($('safe'),safe,bytes);countUp($('review'),review,bytes);
-  growStack($('total-bar'),[[safe,'bar-fill'],[review,'bar-amber']],total,20);
-  growBar($('safe-bar'),safe,total,20);growBar($('review-bar'),review,total,20,'bar-amber');
+  growStack($('total-bar'),[[safe,'bar-fill'],[review,'bar-amber']],total,30);
+  growBar($('safe-bar'),safe,total,30);growBar($('review-bar'),review,total,30,'bar-amber');
   breakdown();
   const auto=report.findings.filter(f=>f.auto_clean);
   $('auto').textContent=auto.length?`Limpeza automática · ${bytes(sum(auto))}`:'Limpeza automática';

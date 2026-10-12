@@ -37,8 +37,8 @@ test('pose parts move what they should', () => {
   // Rows are canvas rows: the art starts one row down.
   assert.deepEqual(changed({look: 1}), [EYES.row + 1, EYES.row + 2]);
   assert.ok(changed({mouth: 2}).every(row => row > EYES.row + 2 && row < EYES.row + 12));
-  assert.deepEqual(changed({ear: true}), [1, 2]);
-  assert.ok(changed({tilt: 1}).every(row => row <= 25));
+  assert.deepEqual(changed({ear: true}), [1, 2, 3]);
+  assert.ok(changed({tilt: 1}).every(row => row <= 36));
   assert.equal(changed({hop: true}).length > 30, true);
   assert.notEqual(drawCat('idle', {t: 0, swish: 1}), drawCat('idle', {t: 0.4, swish: 1})); // tail
 });
@@ -46,7 +46,7 @@ test('pose parts move what they should', () => {
 test('portrait is the head and chest without the broom', () => {
   const lines = portrait('idle').split('\n');
   assert.equal(lines.length, BUST_ROWS);
-  assert.ok(lines.every(line => !line.includes('####')));
+  assert.ok(lines.every(line => line.length <= 54)); // art only: no tail or broom columns
 });
 
 test('say puts a speech bubble beside the cat', () => {

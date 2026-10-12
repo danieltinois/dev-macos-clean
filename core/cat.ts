@@ -27,40 +27,40 @@ export interface Pose {
 
 // The art sits at (ART_X, ART_Y) on the canvas: room on the left for the tail,
 // one row on top for hops and one at the bottom for dust.
-const ART_X = 6, ART_Y = 1, ART_WIDTH = 40;
-export const CAT_WIDTH = ART_X + ART_WIDTH + 14, CAT_HEIGHT = ART_Y + CAT_ART.length + 1;
+const ART_X = 9, ART_Y = 1, ART_WIDTH = 54;
+export const CAT_WIDTH = ART_X + ART_WIDTH + 16, CAT_HEIGHT = ART_Y + CAT_ART.length + 1;
 // Cells are about 1.65x taller than wide in the UI font.
 const ASPECT = 1.65;
 // Feature positions in CAT_ART coordinates (row, column).
-export const EYES = {row: 13, left: 8, right: 19, width: 6};
-export const MOUTH = {row: 20, col: 13};
-const HEAD_ROWS = 25;
-// Rows of the head and chest, for compact portraits (the CLI).
-export const BUST_ROWS = 24;
+export const EYES = {row: 18, left: 12, right: 27, width: 8};
+export const MOUTH = {row: 27, col: 19};
+const HEAD_ROWS = 35;
+// Rows of the head and chest, for compact portraits (the CLI and the tutorial guide).
+export const BUST_ROWS = 34;
 const FUR = ' .:-=+*xX#%@';
 
 // Eye patches: [upper row, lower row] for the left eye ('·' keeps the photo); the right eye is mirrored.
 const EYE_PATCH: Record<Mood, [string, string] | null> = {
   idle: null,
-  blink: ['++=++·', '`---\'·'],
-  happy: ['·.^^.·', '+=··=+'],
-  worried: ['·(@@)·', '··\'\'··'],
-  sleepy: ['++=++·', '-___-·'],
-  purr: ['·.^^.·', '+=··=+'],
+  blink: ['++==++=·', '`-----\'·'],
+  happy: ['·.^^^^.·', '+=+==+=+'],
+  worried: ['·( @@ )·', '··`--\'··'],
+  sleepy: ['++==++=·', '-_____-·'],
+  purr: ['·.^^^^.·', '+=+==+=+'],
 };
 // Mouth patches by openness: rows starting at MOUTH.
 const MOUTH_PATCH: Record<1 | 2 | 3, string[]> = {
-  1: ['·`..\'·'],
-  2: ['·(  )·', '·`--\'·'],
-  3: ['(    )', '(    )', '`----\''],
+  1: ['··`..\'··'],
+  2: ['·(    )·', '··`--\'··'],
+  3: ['·(    )·', '(      )', '(      )', '`------\''],
 };
 // [column, row, text] extras around the head (canvas coordinates); frames alternate to twinkle.
 const EXTRAS: Record<Mood, [number, number, string][][]> = {
   idle: [[]], blink: [[]],
-  happy: [[[42, 2, '*'], [45, 5, '+'], [8, 0, '.']], [[43, 1, '+'], [46, 4, '*'], [7, 1, '*']]],
-  worried: [[[43, 2, '?'], [42, 6, '\''], [42, 7, ',']]],
-  sleepy: [[[41, 3, 'z'], [43, 2, 'Z'], [46, 1, 'z']], [[41, 3, 'z'], [44, 1, 'Z']]],
-  purr: [[[41, 3, '<3'], [45, 1, '<3']], [[42, 2, '<3'], [46, 4, '<3']]],
+  happy: [[[58, 4, '*'], [62, 8, '+'], [5, 1, '.'], [57, 11, '.']], [[59, 2, '+'], [63, 6, '*'], [4, 3, '*'], [58, 10, '+']]],
+  worried: [[[58, 4, '?'], [59, 2, '?'], [57, 9, '\''], [57, 10, ',']]],
+  sleepy: [[[56, 5, 'z'], [58, 3, 'Z'], [62, 1, 'z']], [[56, 5, 'z'], [59, 2, 'Z'], [63, 0, 'Z']]],
+  purr: [[[56, 5, '<3'], [61, 2, '<3']], [[57, 3, '<3'], [62, 6, '<3'], [55, 8, '<3']]],
 };
 const MIRROR: Record<string, string> = {'`': '\'', '\'': '`', '/': '\\', '\\': '/', '(': ')', ')': '('};
 const mirror = (s: string) => [...s].reverse().map(c => MIRROR[c] ?? c).join('');
@@ -85,7 +85,7 @@ export function drawCat(mood: Mood = 'idle', pose: Pose = {}): string {
   }
   if (mouth) MOUTH_PATCH[mouth].forEach((line, i) => put(art, MOUTH.col, MOUTH.row + i, line));
   // Ear twitch: the right ear tip flicks one column outwards.
-  if (ear) for (const row of [0, 1]) art[row]!.splice(28, 12, ' ', ...art[row]!.slice(28, 39));
+  if (ear) for (const row of [0, 1, 2]) art[row]!.splice(36, 18, ' ', ...art[row]!.slice(36, 53));
   // Head tilt: the head rows slide sideways over the body.
   if (tilt) for (let row = 0; row < HEAD_ROWS; row++) {
     const line = art[row]!;
@@ -97,12 +97,12 @@ export function drawCat(mood: Mood = 'idle', pose: Pose = {}): string {
   art.forEach((line, y) => line.forEach((ch, x) => {if (ch !== ' ' && canvas[top + y]) canvas[top + y]![ART_X + x] = ch;}));
 
   // Tail: a tapering curve from behind the left haunch, curling up; drawn only on empty cells.
-  const base = top + 40, lash = Math.sin(t * (2 + swish * 6)) * (1.2 + swish * 2.4);
-  for (let i = 0; i <= 60; i++) {
-    const u = i / 60;
-    const x = 11 - u * 9 + Math.sin(u * Math.PI) * -1 + lash * u * u;
-    const y = base - u * u * 12 + Math.sin(u * Math.PI) * 1.5;
-    const radius = 1.5 - u * 0.8;
+  const base = top + 54, lash = Math.sin(t * (2 + swish * 6)) * (1.6 + swish * 3.2);
+  for (let i = 0; i <= 80; i++) {
+    const u = i / 80;
+    const x = ART_X + 4 - u * 11 + Math.sin(u * Math.PI) * -1.5 + lash * u * u;
+    const y = base - u * u * 17 + Math.sin(u * Math.PI) * 2;
+    const radius = 2.1 - u * 1.1;
     for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
       const cx = Math.round(x + dx), cy = Math.round(y + dy);
       const d = Math.hypot(cx + 0.5 - x, (cy + 0.5 - y) * ASPECT * 0.75);
@@ -117,21 +117,21 @@ export function drawCat(mood: Mood = 'idle', pose: Pose = {}): string {
   for (const [x, y, s] of extras[Math.floor(t * 2) % extras.length]!) put(canvas, x, y + top - ART_Y, s);
 
   // Broom leaning against the cat's side, hanging from its top: handle, binding, fanned bristles.
-  const pivot = [53.5, 3 * ASPECT], angle = sweep - 0.1, axis = [Math.sin(angle), Math.cos(angle)];
+  const pivot = [ART_X + ART_WIDTH + 8.5, 3 * ASPECT], angle = sweep - 0.1, axis = [Math.sin(angle), Math.cos(angle)];
   const handle = Math.abs(axis[0]!) < 0.08 ? '|' : axis[0]! > 0 ? '\\' : '/';
-  const length = 30 * ASPECT;
+  const length = 41 * ASPECT;
   for (let y = 0; y < CAT_HEIGHT; y++) for (let x = ART_X + ART_WIDTH - 2; x < CAT_WIDTH; x++) {
     const dx = x + 0.5 - pivot[0]!, dy = (y + 0.5) * ASPECT - pivot[1]!;
     const u = dx * axis[0]! + dy * axis[1]!, w = dx * axis[1]! - dy * axis[0]!;
     if (u > 0 && u < length && Math.abs(w) < 0.55) canvas[y]![x] = handle;
-    if (u >= length && u < length + 1.8 && Math.abs(w) < 2) canvas[y]![x] = '#';
-    const spread = 2 + (u - length - 1.8) * 0.5;
-    if (u >= length + 1.8 && u < length + 12 && Math.abs(w) < spread) {
-      const fan = w / spread, tip = u > length + 10.4;
+    if (u >= length && u < length + 2.4 && Math.abs(w) < 2.6) canvas[y]![x] = '#';
+    const spread = 2.6 + (u - length - 2.4) * 0.5;
+    if (u >= length + 2.4 && u < length + 16 && Math.abs(w) < spread) {
+      const fan = w / spread, tip = u > length + 14.2;
       canvas[y]![x] = tip ? ((x + y) % 2 ? '\'' : '`') : fan < -0.35 ? '/' : fan > 0.35 ? '\\' : (x * 7 + y) % 3 ? '|' : 'I';
     }
   }
-  if (sweep !== 0) put(canvas, 48 + Math.round(sweep * 12), CAT_HEIGHT - 1, '. ` .  ,');
+  if (sweep !== 0) put(canvas, ART_X + ART_WIDTH + 1 + Math.round(sweep * 16), CAT_HEIGHT - 1, '. ` .  , `');
   return canvas.map(row => row.join('')).join('\n');
 }
 

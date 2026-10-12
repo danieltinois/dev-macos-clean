@@ -14,7 +14,7 @@ const SOURCE = 'https://upload.wikimedia.org/wikipedia/commons/e/e0/Domestic_Cat
 const PAGE = 'https://commons.wikimedia.org/wiki/File:Domestic_Cat_White.JPG';
 const OUT = path.resolve(import.meta.dirname, '..', 'core', 'cat-art.ts');
 // Crop (photo pixels), output columns and tone settings, tuned for a dark UI.
-const CROP = {x0: 20, y0: 15, x1: 830, y1: 1540}, COLUMNS = 40, CELL_ASPECT = 1.65;
+const CROP = {x0: 20, y0: 15, x1: 830, y1: 1540}, COLUMNS = 54, CELL_ASPECT = 1.65;
 const FORM = 2.6, DETAIL = 2.8, BASE = 0.58;
 const RAMP = " .'`^,:;-~=+*xX#%@";
 
