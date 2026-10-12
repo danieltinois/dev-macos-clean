@@ -1,4 +1,5 @@
 import {BANNER, SPINNER} from '../core/ascii';
+import {createMascot} from './mascot';
 import {countUp, growBar, growStack, leave, reduced, sweep, typeIn} from './motion';
 import {pick, visible, type Filters, type Indexed} from './selection';
 import type {CleanupFinding, CleanupReport} from './cleanup';
@@ -26,6 +27,7 @@ function status(text: string, error=false) {stopSpinner();$('status').textConten
 const filters = (): Filters => ({query: value('search'), category: value('category'), severity: value('severity')});
 const filtered = () => Boolean(value('search') || value('category') || value('severity'));
 const shown = () => report ? visible(report.findings, filters()) : [];
+const cat = createMascot(button('cat'), $('cat-art'), $('cat-says'));
 
 // Braille spinner on the scan button and status line, plus a ░▒▓█ sweep in the chart.
 let spinner: ReturnType<typeof setInterval> | null = null, stopSweep: (() => void) | null = null;
@@ -96,7 +98,7 @@ $('reveal').onclick=async()=>{try{await window.devclean.reveal(activeIndex!);}ca
 for(const id of ['search','category','severity','sort']) $(id).addEventListener(id==='search'?'input':'change',update);
 $('export').onclick=async()=>{try{if(await window.devclean.exportReport()) status('Relatório exportado.');}catch(e){status((e as Error).message,true);}};
 $('scan').onclick=async()=>{
-  setBusy(true);startSpinner('Analisando…','Analisando arquivos…');
+  setBusy(true);startSpinner('Analisando…','Analisando arquivos…');cat.set('scanning','Varrendo caches e node_modules…');
   try {
     report=await window.devclean.scan();selected.clear();$('count').textContent=`${report.totals.findings} artefatos encontrados`;
     $('category').replaceChildren(new Option('Todas as ferramentas',''));
@@ -106,7 +108,10 @@ $('scan').onclick=async()=>{
     stopSpinner();summary();render(true);
     const safe=sum(report.findings.filter(isSafe));
     status(safe ? `Análise concluída · ${bytes(safe)} podem ir para a Lixeira com segurança` : 'Análise concluída');
-  } catch(e){status((e as Error).message,true);breakdown();} finally {stopSpinner();setBusy(false);$('scan').textContent='Analisar novamente';}
+    if (safe) cat.set('done',`Achei ${bytes(safe)} para limpar sem medo!`);
+    else if (report.findings.length) cat.set('done','Tudo conferido. Veja os itens para revisar.');
+    else cat.set('empty','Nada para varrer. Seu Mac está em dia!');
+  } catch(e){status((e as Error).message,true);breakdown();cat.set('error','Ops! A análise não terminou.');} finally {stopSpinner();setBusy(false);$('scan').textContent='Analisar novamente';}
 };
 
 // Quick selections act on what the filters show; automatic cleanup always covers the whole report.
@@ -153,10 +158,11 @@ function setBusy(value: boolean) {
 $('clean').onclick=()=>clean(false);
 $('auto').onclick=()=>{if (report) {selectWhere(f=>f.auto_clean, visible(report.findings, {query:'', category:'', severity:''}));clean(true);}};
 async function clean(automatic: boolean) {
-  setBusy(true);status('Validando seleção…');
+  setBusy(true);status('Validando seleção…');cat.set('idle','Confere a lista antes de confirmar.');
   try {
     const result=await window.devclean.cleanup([...selected],report!.cleanup_token,automatic);
-    if(result.canceled) {status('Limpeza cancelada');return;}
+    if(result.canceled) {status('Limpeza cancelada');cat.set('idle','Tudo bem, nada foi movido.');return;}
+    cat.set('cleaning','Pra Lixeira!');
     const moved = new Set(result.moved.map(f=>f.path));
     await leave([...$('list').querySelectorAll<HTMLElement>('.row')].filter(row=>moved.has(report!.findings[Number(row.dataset.index)]?.path ?? '')));
     report=result.report;selected.clear();
@@ -164,8 +170,11 @@ async function clean(automatic: boolean) {
     $('warnings').replaceChildren(...report.warnings.map(w=>node('p',w)),...result.errors.map(e=>node('p',`${e.path}: ${e.message}`)));
     const movedBytes=result.moved.reduce((sum,f)=>sum+f.size_bytes,0);
     status(`${result.moved.length} item(ns) na Lixeira · ${bytes(movedBytes)}. Esvazie a Lixeira para liberar espaço.${result.errors.length?' Alguns itens falharam.':''}`, Boolean(result.errors.length));
-  } catch(e){status((e as Error).message,true);} finally {setBusy(false);}
+    if (result.errors.length) cat.set('error',`${result.errors.length} item(ns) não saíram. Veja os avisos.`);
+    else cat.set('done',`Prontinho! ${bytes(movedBytes)} a menos. Agora é só esvaziar a Lixeira.`);
+  } catch(e){status((e as Error).message,true);cat.set('error','Ops! Não consegui limpar.');} finally {setBusy(false);}
 }
 typeIn($('logo'), BANNER);
+cat.set('idle','Oi! Já vou dar uma olhada no seu Mac.');
 // Start the first scan right away: there is nothing to configure.
 $('scan').click();

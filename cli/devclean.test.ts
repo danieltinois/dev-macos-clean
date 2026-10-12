@@ -94,3 +94,8 @@ test('usage errors exit with 2', () => {
   assert.equal(run(['scan', '--max-depth', 'x']).code, 2);
   assert.match(run(['--version']).stdout, /^devclean \d/);
 });
+
+test('the mascot closes the human output', () => {
+  assert.ok(run(['scan', '--home', makeHome()]).stdout.includes('600 B of low-risk clutter. Purr.'));
+  assert.ok(run(['scan', '--home', makeHome(), '-c', 'nonsense']).stdout.includes('Nothing to sweep here.'));
+});
