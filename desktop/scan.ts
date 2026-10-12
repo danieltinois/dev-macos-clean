@@ -1,22 +1,24 @@
 // Runs the core scanner in a worker thread so the walk never blocks the Electron main process.
-const {Worker, isMainThread, parentPort, workerData} = require('node:worker_threads');
+import {Worker} from 'node:worker_threads';
+import type {Report} from '../core';
+import type {ScanRequest} from './scan-worker';
+
 const TIMEOUT_MS = 300000;
 
-if (!isMainThread && workerData?.devcleanScan) {
-  const {loadRules, scan} = require('../core/index.cjs');
-  parentPort.postMessage(scan(loadRules(), workerData.options));
-}
+// Where the worker script and rules live. Passed in by the caller because the bundler
+// inlines __dirname/import.meta.dirname as build-time paths.
+export interface ScanPaths {worker: string; rulesDir: string}
 
 // Scan `home` only, or the whole local disk when no folder is given.
-function scan(home) {
-  const options = home ? {home} : {globalScan: true};
+export function scan({worker: script, rulesDir}: ScanPaths, home?: string): Promise<Report> {
+  const workerData: ScanRequest = {rulesDir, options: home ? {home} : {globalScan: true}};
   return new Promise((resolve, reject) => {
-    const worker = new Worker(__filename, {workerData: {devcleanScan: true, options}});
+    const worker = new Worker(script, {workerData});
     let settled = false;
-    const finish = (error, report) => {
+    const finish = (error: Error | null, report?: Report) => {
       if (settled) return;
       settled = true; clearTimeout(timer); worker.terminate();
-      error ? reject(error) : resolve(report);
+      error ? reject(error) : resolve(report!);
     };
     const timer = setTimeout(() => finish(new Error('A análise excedeu 5 minutos. Escolha uma pasta menor.')), TIMEOUT_MS);
     worker.once('message', report => finish(null, report));
@@ -24,5 +26,3 @@ function scan(home) {
     worker.once('exit', code => finish(new Error(`O analisador parou inesperadamente (código ${code}).`)));
   });
 }
-
-module.exports = {scan};

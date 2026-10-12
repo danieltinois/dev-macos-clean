@@ -1,19 +1,22 @@
 // End-to-end scanner behavior: discovery, filters, caps, symlinks, permissions, enrichment, totals.
-const {test} = require('node:test');
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const filesystem = require('./filesystem.cjs');
-const {buildTotals} = require('./analyzer.cjs');
-const {loadRules, validateRule} = require('./rules.cjs');
-const {scan} = require('./scanner.cjs');
-const {buildTree, tempDir, block} = require('./test-support.cjs');
+import {afterEach, spyOn, test} from 'bun:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import * as filesystem from './filesystem';
+import {buildTotals} from './analyzer';
+import {loadRules, validateRule} from './rules';
+import {scan} from './scanner';
+import {buildTree, tempDir, removeTempDirs, block, isRoot} from './test-support';
+import type {Report, Severity} from './types';
+
+afterEach(removeTempDirs);
 
 const RULES = loadRules();
-const rule = fields => validateRule({name: 'Test', category: 'node', severity: 'SAFE', reclaimable: true, description: 'd', ...fields});
+const rule = (fields: object) => validateRule({name: 'Test', category: 'node', severity: 'SAFE', reclaimable: true, description: 'd', ...fields});
 
-function makeHome(t) {
-  const home = path.join(tempDir(t), 'home');
+function makeHome() {
+  const home = path.join(tempDir(), 'home');
   buildTree(home, {
     'projects/a/package.json': 50,
     'projects/a/package-lock.json': 60,
@@ -41,14 +44,14 @@ function makeHome(t) {
   return home;
 }
 
-function counts(report) {
-  const result = {};
+function counts(report: Report) {
+  const result: Record<string, number> = {};
   for (const finding of report.findings) result[finding.rule_id] = (result[finding.rule_id] ?? 0) + 1;
   return result;
 }
 
-test('full scan detects everything', t => {
-  const report = scan(RULES, {home: makeHome(t)});
+test('full scan detects everything', () => {
+  const report = scan(RULES, {home: makeHome()});
   assert.deepEqual(counts(report), {'node-modules': 2, 'npm-cache': 1, 'pnpm-cache': 1, 'yarn-cache': 1, 'xcode-derived-data': 1, 'gradle-cache': 1, 'android-system-images': 1, 'android-avds': 2});
   assert.ok(!report.findings.some(f => f.path.includes('.hidden') || f.path.includes('.git')));
   for (const finding of report.findings) assert.ok(finding.last_modified);
@@ -59,90 +62,97 @@ test('full scan detects everything', t => {
   assert.equal(report.schema_version, 1);
 });
 
-test('node_modules findings carry project metadata', t => {
-  const home = makeHome(t);
+test('node_modules findings carry project metadata', () => {
+  const home = makeHome();
   buildTree(home, {'bare/node_modules/x': 1});
   const byProject = Object.fromEntries(scan(RULES, {home, categories: ['node']}).findings
-    .filter(f => f.rule_id === 'node-modules').map(f => [path.basename(f.metadata.project), f.metadata]));
+    .filter(f => f.rule_id === 'node-modules').map(f => [path.basename(f.metadata.project!), f.metadata]));
   assert.deepEqual(byProject.a, {project: path.join(home, 'projects/a'), 'package.json': 'yes', lockfile: 'package-lock.json', package_manager: 'npm'});
-  assert.equal(byProject.b.package_manager, 'yarn');
+  assert.equal(byProject.b!.package_manager, 'yarn');
   assert.deepEqual(byProject.bare, {project: path.join(home, 'bare'), 'package.json': 'no', lockfile: 'none', package_manager: 'unknown'});
 });
 
-test('category filter', t => {
-  const report = scan(RULES, {home: makeHome(t), categories: ['node']});
+test('bun projects are recognized by either lockfile format', () => {
+  const home = tempDir();
+  buildTree(home, {'text/package.json': 1, 'text/bun.lock': 1, 'text/node_modules/x': 1, 'binary/package.json': 1, 'binary/bun.lockb': 1, 'binary/node_modules/x': 1});
+  const managers = scan(RULES, {home, categories: ['node']}).findings.map(f => [path.basename(f.metadata.project!), f.metadata.lockfile, f.metadata.package_manager]);
+  assert.deepEqual(managers, [['binary', 'bun.lockb', 'bun'], ['text', 'bun.lock', 'bun']]);
+});
+
+test('category filter', () => {
+  const report = scan(RULES, {home: makeHome(), categories: ['node']});
   assert.deepEqual(counts(report), {'node-modules': 2, 'npm-cache': 1, 'pnpm-cache': 1, 'yarn-cache': 1});
 });
 
-test('unknown category yields an empty report with a warning', t => {
-  const report = scan(RULES, {home: makeHome(t), categories: ['nonsense']});
+test('unknown category yields an empty report with a warning', () => {
+  const report = scan(RULES, {home: makeHome(), categories: ['nonsense']});
   assert.deepEqual(report.findings, []);
-  assert.match(report.warnings[0], /no rules match/);
+  assert.match(report.warnings[0]!, /no rules match/);
 });
 
-test('excludes skip matching targets', t => {
-  const result = counts(scan(RULES, {home: makeHome(t), excludes: ['node_modules']}));
+test('excludes skip matching targets', () => {
+  const result = counts(scan(RULES, {home: makeHome(), excludes: ['node_modules']}));
   assert.equal(result['node-modules'], undefined);
   assert.equal(result['xcode-derived-data'], 1);
 });
 
-test('maxDepth limits pattern discovery only', t => {
-  const result = counts(scan(RULES, {home: makeHome(t), maxDepth: 2}));
+test('maxDepth limits pattern discovery only', () => {
+  const result = counts(scan(RULES, {home: makeHome(), maxDepth: 2}));
   assert.equal(result['node-modules'], undefined); // all node_modules live at depth 3
   assert.equal(result['xcode-derived-data'], 1);
 });
 
-test('maxFindings caps and warns', t => {
-  const report = scan(RULES, {home: makeHome(t), maxFindings: 1});
+test('maxFindings caps and warns', () => {
+  const report = scan(RULES, {home: makeHome(), maxFindings: 1});
   assert.equal(report.findings.length, 1);
   assert.ok(report.warnings.some(warning => warning.includes('reached max findings')));
 });
 
-test('node_modules is not re-entered', t => {
-  const home = tempDir(t);
+test('node_modules is not re-entered', () => {
+  const home = tempDir();
   buildTree(home, {'p/node_modules/pkg/node_modules/internal/deep.js': 10});
   const report = scan(RULES, {home});
   assert.deepEqual(report.findings.map(f => f.path), [path.join(home, 'p/node_modules')]);
 });
 
-test('explicit paths win over patterns', t => {
-  const home = tempDir(t);
+test('explicit paths win over patterns', () => {
+  const home = tempDir();
   buildTree(home, {'projects/a/package.json': 50, 'projects/a/node_modules/x': 100});
   const target = path.join(home, 'projects/a/node_modules');
   const report = scan([rule({id: 'node-modules', patterns: ['**/node_modules']}), rule({id: 'paths-rule', paths: [target]})], {home});
   assert.deepEqual(report.findings.map(f => f.rule_id), ['paths-rule']);
 });
 
-test('a root that matches a pattern is found', t => {
-  const home = tempDir(t);
+test('a root that matches a pattern is found', () => {
+  const home = tempDir();
   buildTree(home, {'node_modules/x/y': 10});
   assert.deepEqual(scan(RULES, {home}).findings.map(f => f.path), [path.join(home, 'node_modules')]);
 });
 
-test('nonexistent rule paths are ignored', t => {
-  const report = scan([rule({id: 'missing', paths: ['~/does/not/exist']})], {home: tempDir(t)});
+test('nonexistent rule paths are ignored', () => {
+  const report = scan([rule({id: 'missing', paths: ['~/does/not/exist']})], {home: tempDir()});
   assert.deepEqual(report.findings, []);
   assert.deepEqual(report.warnings, []);
 });
 
-test('scan tolerates permission errors', t => {
-  const home = makeHome(t);
-  if (!block(t, path.join(home, 'projects/b'))) return;
+test.skipIf(isRoot)('scan tolerates permission errors', () => {
+  const home = makeHome();
+  block(path.join(home, 'projects/b'));
   const report = scan(RULES, {home});
   assert.equal(counts(report)['node-modules'], 1); // project a still found
   assert.equal(counts(report)['xcode-derived-data'], 1);
   assert.ok(report.warnings.some(warning => warning.startsWith(`cannot read ${path.join(home, 'projects/b')}`)));
 });
 
-test('scan is symlink-loop safe', t => {
-  const home = tempDir(t);
+test('scan is symlink-loop safe', () => {
+  const home = tempDir();
   buildTree(home, {'projects/a/node_modules/x/y': 10});
   fs.symlinkSync(home, path.join(home, 'projects', 'loop'));
   assert.equal(counts(scan(RULES, {home}))['node-modules'], 1);
 });
 
-test('extra roots are scanned', t => {
-  const base = tempDir(t);
+test('extra roots are scanned', () => {
+  const base = tempDir();
   const home = path.join(base, 'home'), extra = path.join(base, 'extra');
   buildTree(home, {'package.json': 10});
   buildTree(extra, {'side/node_modules/x': 100});
@@ -151,41 +161,43 @@ test('extra roots are scanned', t => {
   assert.ok(report.findings.some(f => f.path === path.join(extra, 'side/node_modules')));
 });
 
-test('missing root is reported, not fatal', t => {
-  const home = tempDir(t);
+test('missing root is reported, not fatal', () => {
+  const home = tempDir();
   const report = scan(RULES, {home, roots: [path.join(home, 'nope')]});
   assert.ok(report.warnings.some(warning => warning.includes('scan root does not exist')));
 });
 
-test('global scan adds other homes and the disk root', t => {
-  const home = makeHome(t);
-  const users = tempDir(t);
+test('global scan adds other homes and the disk root', () => {
+  const home = makeHome();
+  const users = tempDir();
   buildTree(users, {'other/Library/Caches/Yarn/x': 7, 'Shared': null});
   fs.symlinkSync(home, path.join(users, 'linked'));
-  const visited = {};
-  t.mock.method(filesystem, 'iterMatches', function* (roots, patterns, options) {
+  const visited: {roots?: string[]; excludes?: string[]} = {};
+  const spy = spyOn(filesystem, 'iterMatches').mockImplementation(function* (roots, _patterns, options) {
     visited.roots = roots;
     visited.excludes = options.excludes;
   });
-  const report = scan(RULES, {home, globalScan: true, usersDir: users});
-  assert.deepEqual(visited.roots, [home, path.join(users, 'Shared'), path.join(users, 'other'), '/']);
-  assert.ok(visited.excludes.includes('/System'));
-  assert.equal(report.options.global_scan, true);
-  assert.ok(report.findings.some(f => f.rule_id === 'yarn-cache' && f.path.startsWith(path.join(users, 'other'))));
-  assert.ok(!counts(report)['user-app-caches']); // known cache rules keep their identity
+  try {
+    const report = scan(RULES, {home, globalScan: true, usersDir: users});
+    assert.deepEqual(visited.roots, [home, path.join(users, 'Shared'), path.join(users, 'other'), '/']);
+    assert.ok(visited.excludes!.includes('/System'));
+    assert.equal(report.options.global_scan, true);
+    assert.ok(report.findings.some(f => f.rule_id === 'yarn-cache' && f.path.startsWith(path.join(users, 'other'))));
+    assert.ok(!counts(report)['user-app-caches']); // known cache rules keep their identity
+  } finally {spy.mockRestore();}
 });
 
-test('markers only match real Cargo projects', t => {
-  const home = tempDir(t);
+test('markers only match real Cargo projects', () => {
+  const home = tempDir();
   buildTree(home, {'code/crate/Cargo.toml': 10, 'code/crate/target/debug/app': 400, 'code/web/target/output.txt': 20});
   const targets = scan(RULES, {home, categories: ['rust']}).findings.filter(f => f.rule_id === 'rust-target');
   assert.deepEqual(targets.map(f => f.path), [path.join(home, 'code/crate/target')]);
-  assert.equal(targets[0].size_bytes, 400);
-  assert.equal(targets[0].metadata['Cargo.toml'], 'yes');
+  assert.equal(targets[0]!.size_bytes, 400);
+  assert.equal(targets[0]!.metadata['Cargo.toml'], 'yes');
 });
 
-test('newer developer caches are detected and win over the generic cache rule', t => {
-  const home = tempDir(t);
+test('newer developer caches are detected and win over the generic cache rule', () => {
+  const home = tempDir();
   buildTree(home, {
     'Library/Developer/Xcode/iOS DeviceSupport/17.0/Symbols/x': 70,
     'Library/Developer/CoreSimulator/Devices/ABC/data/x': 30,
@@ -198,15 +210,15 @@ test('newer developer caches are detected and win over the generic cache rule', 
   });
   const findings = scan(RULES, {home}).findings;
   const byRule = Object.fromEntries(findings.map(f => [f.rule_id, f]));
-  assert.equal(byRule['xcode-device-support'].severity, 'SAFE');
-  assert.equal(byRule['ios-simulators'].severity, 'REVIEW');
-  for (const id of ['cocoapods-cache', 'go-build-cache', 'jetbrains-caches', 'playwright-browsers', 'bun-cache']) assert.equal(byRule[id].severity, 'SAFE', id);
+  assert.equal(byRule['xcode-device-support']!.severity, 'SAFE');
+  assert.equal(byRule['ios-simulators']!.severity, 'REVIEW');
+  for (const id of ['cocoapods-cache', 'go-build-cache', 'jetbrains-caches', 'playwright-browsers', 'bun-cache']) assert.equal(byRule[id]!.severity, 'SAFE', id);
   const generic = new Set(findings.filter(f => f.rule_id === 'user-app-caches').map(f => path.basename(f.path)));
   for (const name of ['CocoaPods', 'go-build', 'JetBrains', 'ms-playwright']) assert.ok(!generic.has(name), name);
 });
 
 test('buildTotals aggregates by severity and category', () => {
-  const finding = (severity, category, size_bytes) => ({severity, category, size_bytes});
+  const finding = (severity: Severity, category: string, size_bytes: number) => ({severity, category, size_bytes});
   assert.deepEqual(buildTotals([finding('SAFE', 'node', 100), finding('REVIEW', 'node', 200), finding('DANGER', 'xcode', 300), finding('SAFE', 'node', 50)]),
     {findings: 4, bytes: 650, by_severity: {SAFE: 150, REVIEW: 200, DANGER: 300}, by_category: {node: 350, xcode: 300}});
 });

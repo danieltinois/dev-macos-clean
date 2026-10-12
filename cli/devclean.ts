@@ -1,11 +1,13 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 // devclean CLI: analysis only, nothing is ever deleted from here.
-const path = require('node:path');
-const {parseArgs} = require('node:util');
-const {loadRules, RuleError, SEVERITIES, scan, formatBytes, formatAgo} = require('../core/index.cjs');
-const {version} = require('../package.json');
+import path from 'node:path';
+import {parseArgs} from 'node:util';
+import {loadRules, RuleError, SEVERITIES, scan, formatBytes, formatAgo, type Report, type Rule} from '../core';
+import {version} from '../package.json';
 
-const CATEGORY_LABELS = {node: 'Node.js', xcode: 'Xcode', android: 'Android'};
+interface Output {write(text: string): unknown}
+
+const CATEGORY_LABELS: Record<string, string> = {node: 'Node.js', xcode: 'Xcode', android: 'Android'};
 const LINE = '-'.repeat(40);
 const USAGE = `usage: devclean scan [ROOT ...] [options]
 
@@ -22,14 +24,14 @@ Analyze macOS developer storage: what uses space and what can be reclaimed.
   --version              show the version
   -h, --help             show this help`;
 
-function categoryLabel(category) {
+function categoryLabel(category: string) {
   return CATEGORY_LABELS[category] ?? category.replace(/-/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
 }
 
-function renderHuman(report) {
+export function renderHuman(report: Report): string {
   const lines = ['DevClean — developer storage analyzer', ''];
   if (!report.findings.length) lines.push('Scan complete. No findings in the scanned roots.', '');
-  let current = null;
+  let current: string | null = null;
   for (const finding of report.findings) {
     if (finding.category !== current) {
       current = finding.category;
@@ -52,8 +54,8 @@ function renderHuman(report) {
   return lines.join('\n');
 }
 
-// Run the CLI with `argv` (without node and script). Returns the exit code.
-function main(argv, {stdout = process.stdout, stderr = process.stderr} = {}) {
+// Run the CLI with `argv` (without the runtime and script). Returns the exit code.
+export function main(argv: string[], {stdout = process.stdout as Output, stderr = process.stderr as Output} = {}): number {
   let args;
   try {
     args = parseArgs({args: argv, allowPositionals: true, options: {
@@ -62,7 +64,7 @@ function main(argv, {stdout = process.stdout, stderr = process.stderr} = {}) {
       version: {type: 'boolean'}, help: {type: 'boolean', short: 'h'},
     }});
   } catch (error) {
-    stderr.write(`error: ${error.message}\n\n${USAGE}\n`);
+    stderr.write(`error: ${(error as Error).message}\n\n${USAGE}\n`);
     return 2;
   }
   const {values, positionals: [command, ...roots]} = args;
@@ -75,7 +77,7 @@ function main(argv, {stdout = process.stdout, stderr = process.stderr} = {}) {
   const maxDepth = values['max-depth'] === undefined ? 6 : Number(values['max-depth']);
   if (!Number.isInteger(maxDepth) || maxDepth < 0) {stderr.write('error: --max-depth must be a non-negative integer\n'); return 2;}
 
-  let rules;
+  let rules: Rule[];
   try {rules = loadRules();} catch (error) {
     if (!(error instanceof RuleError)) throw error;
     stderr.write(`error: ${error.message}\n`);
@@ -90,6 +92,4 @@ function main(argv, {stdout = process.stdout, stderr = process.stderr} = {}) {
   return 0;
 }
 
-if (require.main === module) process.exitCode = main(process.argv.slice(2));
-
-module.exports = {main, renderHuman};
+if (import.meta.main) process.exitCode = main(process.argv.slice(2));

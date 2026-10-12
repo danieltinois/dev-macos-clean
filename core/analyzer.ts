@@ -3,42 +3,43 @@
 // Discovery and measurement live in the scanner; this module adds specialized
 // logic per rule (via ENRICHERS) and builds the report totals. A rule stays
 // declarative until it genuinely needs code.
-const path = require('node:path');
-const {isFile} = require('./filesystem.cjs');
-const {SEVERITIES} = require('./rules.cjs');
+import path from 'node:path';
+import {isFile} from './filesystem';
+import {SEVERITIES} from './rules';
+import type {Finding, Rule, Severity, Totals} from './types';
 
-const LOCKFILES = {'package-lock.json': 'npm', 'pnpm-lock.yaml': 'pnpm', 'yarn.lock': 'yarn', 'bun.lockb': 'bun'};
+export const LOCKFILES: Record<string, string> = {'package-lock.json': 'npm', 'pnpm-lock.yaml': 'pnpm', 'yarn.lock': 'yarn', 'bun.lock': 'bun', 'bun.lockb': 'bun'};
 
 // Risk classification of a rule's findings. The declarative severity is
 // authoritative for now; environment-aware escalation hooks in here.
-function classify(rule) {return rule.severity;}
+export function classify(rule: Rule): Severity {return rule.severity;}
 
 // Attach parent-project information for node_modules findings.
-function enrichNodeModules(finding) {
+function enrichNodeModules(finding: Finding) {
   const project = path.dirname(finding.path);
   const lockfile = Object.keys(LOCKFILES).find(name => isFile(path.join(project, name)));
   finding.metadata.project = project;
   finding.metadata['package.json'] = isFile(path.join(project, 'package.json')) ? 'yes' : 'no';
   finding.metadata.lockfile = lockfile ?? 'none';
-  finding.metadata.package_manager = LOCKFILES[lockfile] ?? 'unknown';
+  finding.metadata.package_manager = (lockfile && LOCKFILES[lockfile]) ?? 'unknown';
 }
 
 // Attach the Cargo project that owns a `target` directory.
-function enrichCargoTarget(finding) {
+function enrichCargoTarget(finding: Finding) {
   const project = path.dirname(finding.path);
   finding.metadata.project = project;
   finding.metadata['Cargo.toml'] = isFile(path.join(project, 'Cargo.toml')) ? 'yes' : 'no';
 }
 
 // rule_id -> enricher. Rules with specialized logic register here.
-const ENRICHERS = {'node-modules': enrichNodeModules, 'rust-target': enrichCargoTarget};
+export const ENRICHERS: Record<string, (finding: Finding) => void> = {'node-modules': enrichNodeModules, 'rust-target': enrichCargoTarget};
 
-function enrich(finding) {ENRICHERS[finding.rule_id]?.(finding);}
+export function enrich(finding: Finding) {ENRICHERS[finding.rule_id]?.(finding);}
 
 // Aggregate sizes by severity and category.
-function buildTotals(findings) {
-  const bySeverity = Object.fromEntries(SEVERITIES.map(severity => [severity, 0]));
-  const byCategory = {};
+export function buildTotals(findings: Pick<Finding, 'severity' | 'category' | 'size_bytes'>[]): Totals {
+  const bySeverity = Object.fromEntries(SEVERITIES.map(severity => [severity, 0])) as Record<Severity, number>;
+  const byCategory: Record<string, number> = {};
   let bytes = 0;
   for (const finding of findings) {
     bytes += finding.size_bytes;
@@ -48,5 +49,3 @@ function buildTotals(findings) {
   const sortedCategories = Object.fromEntries(Object.entries(byCategory).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0));
   return {findings: findings.length, bytes, by_severity: bySeverity, by_category: sortedCategories};
 }
-
-module.exports = {LOCKFILES, ENRICHERS, classify, enrich, buildTotals};
