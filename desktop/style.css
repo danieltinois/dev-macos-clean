@@ -98,7 +98,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .row-info small.blocked { color: #8a7f6e; margin-top: 4px; white-space: normal; }
 /* Layout: overview sidebar (summary + per-tool chart) next to the results. */
 .layout { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 24px; align-items: start; margin-top: 22px; }
-.overview { position: sticky; top: 16px; display: grid; gap: 16px; }
+.overview { display: grid; gap: 16px; }
 .stats, .breakdown { border: 1px solid var(--line); border-radius: 4px; background: #1c1e22; }
 .stats article { padding: 14px 16px; border-top: 1px solid var(--line); }
 .stats article:first-child { border-top: 0; }
@@ -154,17 +154,16 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 }
 @media (max-width: 760px) { .overview { grid-template-columns: minmax(0, 1fr); } }
 
-/* Mascot: the cat beside the logo, with a speech bubble. */
-.brand-group { display: flex; align-items: center; gap: 28px; min-width: 0; }
-.mascot { display: flex; align-items: center; gap: 4px; min-width: 0; }
-.cat { padding: 4px 6px; border: 0; background: transparent; border-radius: 6px; }
-.cat:hover { background: #22262a; }
-.cat pre { margin: 0; font: 7.5px/1 var(--mono); letter-spacing: .2px; color: #d8dce2; }
-.bubble { position: relative; max-width: 280px; padding: 8px 11px; border: 1px solid #3b4047; border-radius: 8px; background: #20242a; color: #c8cbd1; font: 11px/1.45 var(--mono); }
+/* Mascot: the ASCII cat card at the top of the sidebar, with a speech bubble below. */
+.mascot { display: grid; justify-items: center; gap: 10px; padding: 14px 16px 16px; border: 1px solid var(--line); border-radius: 4px; background: radial-gradient(ellipse at 45% 40%, #23272c, #1c1e22 70%); }
+.cat { padding: 4px; border: 0; background: transparent; border-radius: 6px; }
+.cat:hover { background: transparent; }
+.cat pre { margin: 0; font: 5.6px/1 var(--mono); letter-spacing: 0; color: #e4e7eb; text-shadow: 0 0 6px #ffffff14; }
+.bubble { position: relative; width: 100%; padding: 8px 11px; border: 1px solid #3b4047; border-radius: 8px; background: #20242a; color: #c8cbd1; font: 11px/1.45 var(--mono); text-align: center; }
 .bubble:empty { display: none; }
-.bubble::before { content: ""; position: absolute; left: -6px; top: 50%; width: 10px; height: 10px; margin-top: -5px; background: inherit; border-left: 1px solid #3b4047; border-bottom: 1px solid #3b4047; transform: rotate(45deg); }
+.bubble::before { content: ""; position: absolute; top: -6px; left: 50%; width: 10px; height: 10px; margin-left: -5px; background: inherit; border-left: 1px solid #3b4047; border-top: 1px solid #3b4047; transform: rotate(45deg); }
 @media (prefers-reduced-motion: no-preference) {
-  .bubble.pop { animation: pop .28s cubic-bezier(.2,.9,.3,1.3); transform-origin: left center; }
-  @keyframes pop { from { opacity: 0; transform: scale(.85) translateX(-4px); } }
+  .bubble.pop { animation: pop .28s cubic-bezier(.2,.9,.3,1.3); transform-origin: top center; }
+  @keyframes pop { from { opacity: 0; transform: scale(.9) translateY(-4px); } }
+  .cat:hover pre { transform: translateY(-1px); transition: transform .15s; }
 }
-@media (max-width: 1000px) { .bubble { display: none; } }

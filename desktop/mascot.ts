@@ -1,4 +1,4 @@
-// The broom-wielding cat in the header: animates the procedural cat for the app state and talks in a bubble.
+// The cat card: animates the ASCII cat for the app state and talks in a bubble.
 import {drawCat, type Mood} from '../core/cat';
 import {reduced} from './motion';
 
@@ -17,8 +17,7 @@ export function createMascot(button: HTMLButtonElement, art: HTMLElement, bubble
     bubble.classList.remove('pop');void bubble.offsetWidth;bubble.classList.add('pop');
   }
   function paint(now: number) {
-    const t = (now - started) / 1000, purring = now < purrUntil;
-    const speed = SWEEP[state];
+    const t = (now - started) / 1000, purring = now < purrUntil, speed = SWEEP[state];
     // Blink for ~150 ms every 3.6 s while idle.
     const blinking = state === 'idle' && !purring && t % 3.6 < 0.15;
     const mood: Mood = purring ? 'purr' : blinking ? 'blink' : FACE[state];

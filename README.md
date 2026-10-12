@@ -366,3 +366,7 @@ assinatura ou notarização. Como não há mais Python, empacotar o app não exi
 embutir nenhum interpretador.
 
 Validação: `bun test` (core, CLI e Electron) e `bun run typecheck`.
+
+Mascote: gato em ASCII gerado por `scripts/cat-art.ts` a partir da foto
+["Domestic Cat White"](https://commons.wikimedia.org/wiki/File:Domestic_Cat_White.JPG),
+de JMG2JMG, em domínio público (Wikimedia Commons).

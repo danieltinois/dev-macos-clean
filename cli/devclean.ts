@@ -2,7 +2,7 @@
 // devclean CLI: analysis only, nothing is ever deleted from here.
 import path from 'node:path';
 import {parseArgs} from 'node:util';
-import {loadRules, RuleError, SEVERITIES, scan, formatBytes, formatAgo, BANNER, bar, drawCat, say, type Report, type Rule} from '../core';
+import {loadRules, RuleError, SEVERITIES, scan, formatBytes, formatAgo, BANNER, bar, portrait, say, type Report, type Rule} from '../core';
 import {version} from '../package.json';
 
 interface Output {write(text: string): unknown}
@@ -68,8 +68,8 @@ export function renderHuman(report: Report): string {
   if (report.warnings.length) lines.push('', 'Warnings:', ...report.warnings.map(warning => `  - ${warning}`));
   const safe = report.totals.by_severity.SAFE ?? 0;
   lines.push('', report.findings.length
-    ? say(drawCat('happy'), safe ? `${formatBytes(safe)} of low-risk clutter. Purr.` : 'All checked. Nothing low-risk to sweep.')
-    : say(drawCat('sleepy'), 'Nothing to sweep here. Back to my nap.'));
+    ? say(portrait('happy'), safe ? `${formatBytes(safe)} of low-risk clutter. Purr.` : 'All checked. Nothing low-risk to sweep.')
+    : say(portrait('sleepy'), 'Nothing to sweep here. Back to my nap.'));
   lines.push('', 'DevClean only analyzes storage. Nothing was deleted.');
   return lines.join('\n');
 }
