@@ -10,19 +10,23 @@
   <main>
     <section class="heading"><div><h1 class="sr-only">DevClean</h1><pre id="logo" class="logo" aria-hidden="true"></pre><p>Caches, dependências, logs e arquivos para revisão.</p></div><div class="actions"><button id="scan">Analisar</button><button id="auto" class="primary" disabled title="Envia à Lixeira caches que se recriam sozinhos e dependências de projetos parados há 90+ dias">Limpeza automática</button></div></section>
     <div class="scope"><div class="scope-path"><span class="label">ESCOPO</span><code>Mac inteiro · caches, projetos e arquivos para revisão</code></div><span class="scope-note">Disco local · acesso permitido pelo macOS</span></div>
-    <section class="stats" aria-label="Resumo da análise">
-      <article><div>IDENTIFICADO</div><strong id="total">—</strong><code class="meter" id="total-bar" aria-hidden="true"></code><small id="count">Sem análise</small></article>
-      <article><div><span class="dot"></span> LIMPEZA DISPONÍVEL</div><strong id="safe">—</strong><code class="meter" id="safe-bar" aria-hidden="true"></code><small>Caches autorizados para a Lixeira</small></article>
-      <article><div><span class="dot amber"></span> REVISAR</div><strong id="review">—</strong><code class="meter amber-text" id="review-bar" aria-hidden="true"></code><small>SDKs, ambientes e dados locais</small></article>
-    </section>
-    <section class="breakdown" aria-label="Espaço por ferramenta" hidden><div class="label">POR FERRAMENTA</div><pre id="breakdown"></pre></section>
+    <div class="layout">
+    <aside class="overview" aria-label="Resumo da análise">
+      <section class="stats">
+        <article><div class="label">IDENTIFICADO</div><strong id="total">—</strong><code class="meter" id="total-bar" aria-hidden="true"></code><small id="count">Sem análise</small></article>
+        <article><div class="label"><span class="dot"></span> LIMPEZA SEGURA</div><strong id="safe">—</strong><code class="meter" id="safe-bar" aria-hidden="true"></code><small>Caches e dependências que se recriam</small></article>
+        <article><div class="label"><span class="dot amber"></span> REVISAR</div><strong id="review">—</strong><code class="meter" id="review-bar" aria-hidden="true"></code><small>Conferir antes, ou limpar fora do app</small></article>
+      </section>
+      <section class="breakdown" aria-label="Espaço por ferramenta"><div class="breakdown-head"><span class="label">POR FERRAMENTA</span><span class="hint" id="breakdown-hint">clique para filtrar</span></div><div id="breakdown"></div></section>
+    </aside>
     <section class="results">
       <div class="section-title"><h2>Resultados <span id="visible-count"></span></h2><button id="export" class="subtle" disabled>Exportar .json</button></div>
       <div class="filters"><input id="search" placeholder="Filtrar nome ou caminho" aria-label="Buscar artefatos"><select id="category" aria-label="Categoria"><option value="">Todas as ferramentas</option></select><select id="severity" aria-label="Risco"><option value="">Todos os riscos</option><option value="SAFE">Baixo risco</option><option value="REVIEW">Revisar</option><option value="DANGER">Alto risco</option></select><select id="sort" aria-label="Ordenação"><option value="size">Tamanho ↓</option><option value="name">Nome A–Z</option><option value="date">Modificação ↓</option></select></div>
-      <div class="cleanup-bar"><div class="quick"><button id="select-safe" class="subtle" disabled title="Seleciona tudo que pode ir para a Lixeira, inclusive itens para revisar">Selecionar tudo</button><button id="select-stale" class="subtle" disabled title="node_modules e target/ de projetos sem modificação há mais de 90 dias">Projetos parados (90+ dias)</button><button id="select-none" class="subtle" disabled>Limpar seleção</button><span id="selection">Nenhum item selecionado</span></div><button id="clean" class="primary" disabled>Enviar à Lixeira</button></div>
+      <div class="cleanup-bar"><div class="quick"><button id="select-safe" class="subtle" disabled title="Seleciona os itens visíveis que podem ir para a Lixeira, inclusive itens para revisar">Selecionar tudo</button><button id="select-stale" class="subtle" disabled title="node_modules e target/ visíveis de projetos sem modificação há mais de 90 dias">Projetos parados (90+ dias)</button><button id="select-none" class="subtle" disabled>Limpar seleção</button><span id="selection">Nenhum item selecionado</span></div><button id="clean" class="primary" disabled>Enviar à Lixeira</button></div>
       <div class="table-head" aria-hidden="true"><span></span><span>FERRAMENTA</span><span>ARTEFATO / CAMINHO</span><span>RISCO</span><span>TAMANHO</span><span></span></div>
       <div id="list"><div class="empty"><code>nenhuma análise executada</code><p>Use “Analisar” para listar os artefatos.</p></div></div>
     </section>
+    </div>
     <div id="warnings"></div>
     <footer><div class="status-line"><span class="dot" id="status-dot"></span><span id="status" role="status" aria-live="polite">Pronto</span></div><span id="timestamp">Limpeza via Lixeira · restauração pelo Finder.</span></footer>
   </main>
