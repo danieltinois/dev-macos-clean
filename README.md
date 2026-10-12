@@ -10,7 +10,7 @@ Gradle caches, `node_modules`, package manager caches, and (in later phases)
 Docker, Flutter, Python, Rust, Homebrew and JetBrains artifacts.
 
 > **Status: scanner + Electron interface with recoverable cleanup.**
-> Everything is plain Node.js — no Python, no runtime dependencies.
+> Written in TypeScript and developed with Bun — no Python, no runtime dependencies.
 > The CLI only analyzes. The desktop app can move selected, known
 > regenerable caches to the macOS Trash after confirmation; it never empties Trash.
 
@@ -45,37 +45,47 @@ context (e.g. an SDK another tool depends on) without touching rule files.
 
 ```
 dev-macos-clean/
-├── package.json            # scripts (start, scan, test), `devclean` bin, Electron dev dependency
+├── package.json            # scripts (build, start, scan, test, typecheck), `devclean` bin
+├── tsconfig.json           # strict TypeScript, type-checked with `tsc --noEmit`
+├── scripts/build.ts        # bundles desktop/ + rules/ into dist/ for Electron
 ├── rules/                  # one declarative rule per JSON file (data, not code)
 │   ├── node-modules.json
 │   ├── xcode-derived-data.json
 │   └── ...
 ├── core/                   # domain logic: no UI, never deletes anything
-│   ├── index.cjs           # public API: loadRules, scan, formatBytes, formatAgo
-│   ├── rules.cjs           # JSON -> rule loading + strict validation
-│   ├── filesystem.cjs      # dirSize, bounded walk, glob/fnmatch, excludes, symlink safety
-│   ├── scanner.cjs         # discovery -> measurement -> classification -> report
-│   ├── analyzer.cjs        # per-rule enrichers + totals
-│   ├── format.cjs          # human formatting (bytes, relative time)
-│   ├── test-support.cjs    # temp trees for tests
-│   └── *.test.cjs
+│   ├── index.ts            # public API: loadRules, scan, formatBytes, formatAgo
+│   ├── rules.ts            # JSON -> rule loading + strict validation
+│   ├── filesystem.ts       # dirSize, bounded walk, glob/fnmatch, excludes, symlink safety
+│   ├── scanner.ts          # discovery -> measurement -> classification -> report
+│   ├── analyzer.ts         # per-rule enrichers + totals
+│   ├── format.ts           # human formatting (bytes, relative time)
+│   ├── types.ts            # Rule, Finding and Report types (the JSON contract)
+│   ├── test-support.ts     # temp trees for tests
+│   └── *.test.ts
 ├── cli/
-│   ├── devclean.cjs        # `devclean scan` (human text or --json)
-│   └── devclean.test.cjs
+│   ├── devclean.ts         # `devclean scan` (human text or --json)
+│   └── devclean.test.ts
 └── desktop/                # Electron app
-    ├── main.cjs            # main process: window, IPC handlers, confirmation dialogs
-    ├── scan.cjs            # runs core/ in a worker thread (main process never blocks)
-    ├── cleanup.cjs         # cleanup policy: allowlist, identity checks, move to Trash
-    ├── preload.cjs         # minimal bridge exposed to the page
-    ├── index.html, renderer.js, style.css   # sandboxed UI, no Node access
-    └── *.test.cjs
+    ├── main.ts             # main process: window, IPC handlers, confirmation dialogs
+    ├── scan.ts             # runs core/ in a worker thread (main process never blocks)
+    ├── scan-worker.ts      # worker entry: loads rules, scans, posts the report
+    ├── cleanup.ts          # cleanup policy: allowlist, identity checks, move to Trash
+    ├── preload.ts          # minimal bridge exposed to the page
+    ├── index.html, renderer.ts, style.css   # sandboxed UI, no Node access
+    └── *.test.ts
 ```
+
+Bun runs the CLI and the tests straight from the `.ts` sources. Electron ships its
+own Node.js, so `bun run build` bundles the main process, preload and scan worker
+to CommonJS (and the renderer to a browser script) in `dist/`, together with a
+copy of `rules/`. The bundler inlines `__dirname`, so desktop code resolves its
+files at runtime from `app.getAppPath()` instead.
 
 How a scan flows through the app:
 
-1. `renderer.js` calls `window.devclean.scan()`; `preload.cjs` forwards it over IPC.
-2. `main.cjs` asks `scan.cjs`, which starts a worker thread that runs
-   `core.scan(core.loadRules(), {globalScan: true})` and posts the report back
+1. `renderer.ts` calls `window.devclean.scan()`; `preload.ts` forwards it over IPC.
+2. `main.ts` asks `scan.ts`, which starts a worker thread that runs
+   `core.scan(core.loadRules(rulesDir), {globalScan: true})` and posts the report back
    (5-minute timeout).
 3. `cleanup.prepare()` marks each finding `cleanup_allowed` / `cleanup_review` /
    `auto_clean` against its own allowlist and records the identity (inode, mtime)
@@ -83,7 +93,7 @@ How a scan flows through the app:
 4. On cleanup, the selection is checked again (token, allowlist, identity,
    no symlinks), confirmed in a native dialog, and moved to the Trash.
 
-The scanner (`rules/` + `core/`) decides **what exists**; `desktop/cleanup.cjs`
+The scanner (`rules/` + `core/`) decides **what exists**; `desktop/cleanup.ts`
 decides **what may be moved**. The two are separate on purpose: a broad or
 mistaken rule can make the scanner show more, but never makes the app delete more.
 
@@ -122,20 +132,22 @@ Rule files are strictly validated (unknown keys are rejected, ids must be
 unique slugs, severity must be one of the three values, at least one of
 `paths`/`patterns` required). **Contributors add scanners by dropping in a JSON
 file** — no code changes needed. Specialized logic registers by rule id in
-`core/analyzer.cjs` (see `ENRICHERS`, e.g. `node-modules`).
+`core/analyzer.ts` (see `ENRICHERS`, e.g. `node-modules`).
 
 ## Installation (development)
 
-Requires Node.js 22+ (Electron is installed as a dev dependency).
+Requires [Bun](https://bun.sh) 1.2+ (Electron is installed as a dev dependency and
+downloads its binary on first launch).
 
 ```bash
-npm ci
-npm test
+bun install
+bun test
+bun run typecheck
 ```
 
 ## Usage
 
-`npm run scan --` runs the CLI from the checkout (`npm link` installs a global
+`bun run scan` runs the CLI from the checkout (`bun link` installs a global
 `devclean` command if you prefer).
 
 ```bash
@@ -256,7 +268,7 @@ Stable shape, also what the desktop app receives (`schema_version: 1`):
 - **Phase 2 (available in Electron)** — Selected known regenerable caches moved
   to Trash after native confirmation, with path and identity validation.
 - **Phase 3 (development interface available)** — Electron desktop app running
-  the core in-process (worker thread). Python scanner ported to Node.
+  the core in-process (worker thread). Python scanner ported to Node, then to TypeScript on Bun.
 - **Phase 4** — Advanced scanners: Docker, Flutter, Python (venvs, pip cache),
   Rust `target`, Maven, Homebrew, JetBrains, VSCode.
 - **Phase 5** — Developer Storage Intelligence: old project detection,
@@ -281,8 +293,8 @@ Mostrar no Finder, exportação JSON e limpeza de caches conhecidos via Lixeira.
 ### Início rápido
 
 ```bash
-npm ci
-npm start       # abre o app e já inicia a análise
+bun install
+bun start       # compila para dist/, abre o app e já inicia a análise
 ```
 
 O app analisa o Mac assim que abre. Depois:
@@ -306,7 +318,7 @@ O app analisa o Mac assim que abre. Depois:
 
 Depois, esvazie a Lixeira para liberar o espaço.
 
-Sem interface: `npm run scan` (ou `npm run scan -- --category xcode`).
+Sem interface: `bun run scan` (ou `bun run scan --category xcode`).
 
 ### O que é detectado
 
@@ -319,7 +331,7 @@ Sem interface: `npm run scan` (ou `npm run scan -- --category xcode`).
 | IDEs / outros | Caches JetBrains e Android Studio, Homebrew | Docker (`docker system prune`), caches de apps, logs, Downloads |
 
 Para incluir uma nova ferramenta, adicione um JSON em `rules/` e,
-se a limpeza for de baixo risco, o caminho fixo em `desktop/cleanup.cjs`.
+se a limpeza for de baixo risco, o caminho fixo em `desktop/cleanup.ts`.
 
 O aplicativo analisa globalmente o disco local: pastas de usuários, projetos e
 caches conhecidos, além de Downloads e logs para revisão. Não há seletor de pasta.
@@ -349,4 +361,4 @@ Esta versão executa pelo checkout; ainda não inclui instalador `.dmg`,
 assinatura ou notarização. Como não há mais Python, empacotar o app não exige
 embutir nenhum interpretador.
 
-Validação: `npm test` (core, CLI e Electron, com `node --test`).
+Validação: `bun test` (core, CLI e Electron) e `bun run typecheck`.

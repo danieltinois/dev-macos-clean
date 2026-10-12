@@ -1,6 +1,6 @@
 # Normalize line endings: files are stored LF, checked out per platform.
 * text=auto
-*.cjs text eol=lf
+*.ts text eol=lf
 *.js text eol=lf
 *.json text eol=lf
 *.md text eol=lf

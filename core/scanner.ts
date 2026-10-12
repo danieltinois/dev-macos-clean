@@ -2,20 +2,35 @@
 //
 // Explicit rule paths are probed first (cheap, most specific). Pattern rules
 // then drive one bounded walk over the scan roots. Nothing here ever deletes.
-const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
-const filesystem = require('./filesystem.cjs');
-const analyzer = require('./analyzer.cjs');
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import * as filesystem from './filesystem';
+import * as analyzer from './analyzer';
+import type {Finding, Report, Rule} from './types';
 
-const SCHEMA_VERSION = 1;
-const GLOBAL_EXCLUDES = ['/System', '/Volumes', '/dev', '/private', '/usr', '/bin', '/sbin'];
-const DEFAULTS = {roots: [], categories: null, excludes: [], maxDepth: 6, maxDirs: 25_000, maxFindings: 500, maxEntries: 500_000, home: null, globalScan: false, usersDir: '/Users', log: () => {}};
+export interface ScanOptions {
+  roots: string[];
+  categories: string[] | null;
+  excludes: string[];
+  maxDepth: number;
+  maxDirs: number;
+  maxFindings: number;
+  maxEntries: number;
+  home: string | null;
+  globalScan: boolean;
+  usersDir: string;
+  log: (message: string) => void;
+}
 
-function compare(a, b) {return a < b ? -1 : a > b ? 1 : 0;}
+export const SCHEMA_VERSION = 1;
+export const GLOBAL_EXCLUDES = ['/System', '/Volumes', '/dev', '/private', '/usr', '/bin', '/sbin'];
+export const DEFAULTS: ScanOptions = {roots: [], categories: null, excludes: [], maxDepth: 6, maxDirs: 25_000, maxFindings: 500, maxEntries: 500_000, home: null, globalScan: false, usersDir: '/Users', log: () => {}};
+
+function compare(a: string, b: string) {return a < b ? -1 : a > b ? 1 : 0;}
 
 // Other users' homes, for a global scan.
-function otherHomes(usersDir, home, warnings) {
+function otherHomes(usersDir: string, home: string, warnings: string[]) {
   try {
     return fs.readdirSync(usersDir, {withFileTypes: true})
       .filter(entry => entry.isDirectory() && !entry.isSymbolicLink())
@@ -23,13 +38,13 @@ function otherHomes(usersDir, home, warnings) {
       .filter(dir => dir !== home)
       .sort();
   } catch (error) {
-    warnings.push(`cannot list ${usersDir}: ${error.message}`);
+    warnings.push(`cannot list ${usersDir}: ${(error as Error).message}`);
     return [];
   }
 }
 
-function explicitTargets(rule, home, log) {
-  const targets = [];
+function explicitTargets(rule: Rule, home: string, log: ScanOptions['log']) {
+  const targets: string[] = [];
   for (const entry of rule.paths) {
     const expanded = filesystem.expandPath(entry, home);
     if (filesystem.hasGlobMagic(entry)) targets.push(...filesystem.glob(expanded));
@@ -39,20 +54,20 @@ function explicitTargets(rule, home, log) {
   return targets;
 }
 
-function ruleFor(target, patternRules) {
+function ruleFor(target: string, patternRules: Rule[]) {
   return patternRules.find(rule =>
     rule.patterns.some(pattern => filesystem.rulePatternMatches(target, pattern)) &&
     (!rule.markers.length || rule.markers.some(marker => filesystem.isFile(path.join(path.dirname(target), marker)))));
 }
 
 // Run a scan with `options` (see DEFAULTS) over `rules` and return the report (schema_version 1).
-function scan(rules, options = {}) {
-  const opts = {...DEFAULTS, ...Object.fromEntries(Object.entries(options).filter(([, value]) => value !== undefined))};
-  const warnings = [];
+export function scan(rules: Rule[], options: Partial<ScanOptions> = {}): Report {
+  const opts: ScanOptions = {...DEFAULTS, ...Object.fromEntries(Object.entries(options).filter(([, value]) => value !== undefined))};
+  const warnings: string[] = [];
   const categories = opts.categories?.length ? new Set(opts.categories) : null;
   // The generic per-app cache rule runs last so specific cache rules claim their folders first.
   const selected = rules.filter(rule => !categories || categories.has(rule.category))
-    .sort((a, b) => (a.id === 'user-app-caches') - (b.id === 'user-app-caches'));
+    .sort((a, b) => Number(a.id === 'user-app-caches') - Number(b.id === 'user-app-caches'));
   if (!selected.length) warnings.push('no rules match the requested categories; nothing to scan');
 
   const home = path.resolve(opts.home ?? os.homedir());
@@ -65,12 +80,12 @@ function scan(rules, options = {}) {
   });
   const scanExcludes = [...opts.excludes, ...(opts.globalScan ? GLOBAL_EXCLUDES : [])];
 
-  const findings = [];
-  const seen = new Map(); // resolved target path -> rule_id (keeps first match)
+  const findings: Finding[] = [];
+  const seen = new Map<string, string>(); // resolved target path -> rule_id (keeps first match)
   const full = () => findings.length >= opts.maxFindings;
-  function add(target, rule) {
+  function add(target: string, rule: Rule) {
     if (filesystem.excluded(target, opts.excludes)) return opts.log(`excluding ${target}`);
-    let key;
+    let key: string;
     try {key = fs.realpathSync(target);} catch {key = path.resolve(target);}
     if (seen.has(key)) return opts.log(`duplicate target ${target} (kept rule ${seen.get(key)})`);
     const measured = filesystem.measure(target, {maxEntries: opts.maxEntries});
@@ -118,5 +133,3 @@ function scan(rules, options = {}) {
     warnings,
   };
 }
-
-module.exports = {SCHEMA_VERSION, GLOBAL_EXCLUDES, DEFAULTS, scan};

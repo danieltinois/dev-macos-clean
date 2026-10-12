@@ -4,19 +4,24 @@
   "private": true,
   "description": "DevClean macOS developer storage analyzer",
   "license": "MIT",
-  "main": "desktop/main.cjs",
+  "type": "module",
+  "main": "dist/desktop/main.cjs",
   "bin": {
-    "devclean": "cli/devclean.cjs"
+    "devclean": "cli/devclean.ts"
   },
   "engines": {
-    "node": ">=22"
+    "bun": ">=1.2"
   },
   "scripts": {
-    "start": "electron .",
-    "scan": "node cli/devclean.cjs scan",
-    "test": "node --test core/*.test.cjs cli/*.test.cjs desktop/*.test.cjs"
+    "build": "bun scripts/build.ts",
+    "start": "bun run build && electron .",
+    "scan": "bun cli/devclean.ts scan",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "electron": "^42.0.0"
+    "@types/bun": "latest",
+    "electron": "^42.0.0",
+    "typescript": "^5.9.0"
   }
 }
