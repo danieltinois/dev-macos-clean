@@ -21,6 +21,21 @@ bun start              # build, then open the Electron app (it scans the whole M
 Before finishing a change, run `bun test` and `bun run typecheck`. If you touch
 `desktop/` or `scripts/build.ts`, also run `bun run build`.
 
+The Swift apps under `apple/` need Xcode (prefix commands with
+`DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` if `xcode-select`
+points at the Command Line Tools):
+
+```bash
+cd apple/DevCleanKit && swift test     # DevCleanKit tests (swift-testing)
+xcodebuild -project apple/DevClean.xcodeproj -scheme DevClean -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
+xcodebuild -project apple/DevClean.xcodeproj -scheme DevClean -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+```
+
+`apple/DevCleanKit` still holds a Swift copy of the scanner and policy; it is
+being replaced by the bundled TypeScript engine (`core/engine.ts`). Until
+then, a change to `rules/`, `core/` or `core/policy.ts` must be mirrored there.
+If you touch `apple/`, run the Swift tests and both builds.
+
 ## Layout
 
 - `rules/*.json`: one declarative rule per file (`id`, `category`, `severity`,
@@ -41,6 +56,14 @@ Before finishing a change, run `bun test` and `bun run typecheck`. If you touch
   `preload.ts` (the `window.devclean` bridge), `renderer.ts` (sandboxed UI).
 - `scripts/build.ts`: bundles to `dist/` (main, preload and worker as CJS; the
   renderer as a browser script). `dist/` is generated, so don't edit or commit it.
+- `apple/`: native Swift apps. `DevCleanKit/` is a Swift package that ports
+  `core/` plus `core/policy.ts` (same rules from `rules/`, same report
+  contract, same cleanup policy). `DevClean.xcodeproj` builds one SwiftUI
+  target for macOS (scans and cleans, not sandboxed, bundles `rules/`) and
+  iPhone (read-only: opens reports exported from a Mac, since iOS can't see the
+  Mac's disk). The project uses a synchronized folder, so new files in
+  `apple/DevClean/` need no project edits.
+
 ## Safety invariants (do not weaken)
 
 This tool deletes things on users' machines. Treat these as hard rules:
@@ -49,9 +72,10 @@ This tool deletes things on users' machines. Treat these as hard rules:
    be moved**. A rule never grants cleanup. Cleanup needs an explicit,
    home-relative entry in `targets`/`reviewTargets` (or `projectOutputs` with a
    marker file) in `policy.ts`. The trusted side of each app
-   (`desktop/cleanup.ts`) applies that policy and does the move.
-2. Cleanup only ever uses `shell.trashItem`. Never add permanent deletion
-   (`rm`, `fs.rm`, `unlink`) of user paths, and never empty the Trash.
+   (`desktop/cleanup.ts`, the Swift apps) applies that policy and does the move.
+2. Cleanup only ever uses `shell.trashItem` (`FileManager.trashItem` in Swift).
+   Never add permanent deletion (`rm`, `fs.rm`, `unlink`) of user paths, and
+   never empty the Trash.
 3. Before trashing, each target is revalidated against the identity captured at
    scan time (realpath, dev, inode, mtime, ctime), and symlinks anywhere in the
    path are rejected. Keep `prepare` → `select` → `validate` → `moveToTrash`.

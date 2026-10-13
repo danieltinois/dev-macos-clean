@@ -342,6 +342,29 @@ Depois, esvazie a Lixeira para liberar o espaço.
 
 Sem interface: `bun run scan` (ou `bun run scan --category xcode`).
 
+## Apps nativos em Swift (macOS e iPhone)
+
+`apple/` tem uma versão nativa em SwiftUI, um único projeto para Mac e iPhone,
+com o mesmo scanner, as mesmas regras de `rules/` e a mesma política de limpeza
+(pacote `apple/DevCleanKit`).
+
+- **Mac** — analisa o disco e limpa pela Lixeira, como o app Electron: confirmação
+  que começa em **Cancelar**, revalidação de cada caminho antes de mover e nenhuma
+  exclusão definitiva. O botão **Enviar ao iPhone** compartilha o relatório por AirDrop.
+- **iPhone** — o iOS isola cada app e não dá acesso ao disco do Mac, então o app do
+  iPhone só **lê relatórios**: abra o `.json` enviado pelo Mac (ou gerado com
+  `devclean scan --json`) em **Abrir relatório** para ver o resumo, os gráficos e os
+  detalhes. A limpeza continua sendo feita no Mac.
+
+```bash
+open apple/DevClean.xcodeproj          # escolha "My Mac" ou um iPhone e rode
+cd apple/DevCleanKit && swift test     # testes do núcleo em Swift
+```
+
+Para rodar num iPhone de verdade, selecione seu time em *Signing & Capabilities*.
+O app de Mac não usa App Sandbox (precisa ler o disco inteiro) e, como o Electron,
+precisa de **Acesso Total ao Disco** para medir algumas pastas.
+
 ### O que é detectado
 
 | Ferramenta | Limpeza com um clique (baixo risco) | Só para revisão |
