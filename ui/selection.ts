@@ -1,5 +1,5 @@
 // Pure filtering and quick-selection logic for the renderer (no DOM), so it can be tested.
-import type {CleanupFinding} from './cleanup';
+import type {CleanupFinding} from './bridge';
 
 export interface Filters {query: string; category: string; severity: string}
 export type Indexed = CleanupFinding & {index: number};

@@ -1,7 +1,7 @@
 // The mascot: a white cat converted to ASCII from a real photo (core/cat-art.ts),
 // brought to life with a pose: eyes that look around, a mouth that talks and
 // yawns, a twitching ear, a head tilt, a hop, a swishing tail and a broom that
-// sweeps. Pure strings, no I/O; used by the CLI and the desktop renderer.
+// sweeps. Pure strings, no I/O; used by the CLI and the app UI.
 // Every frame is CAT_WIDTH x CAT_HEIGHT whatever the pose.
 import {CAT_ART} from './cat-art';
 

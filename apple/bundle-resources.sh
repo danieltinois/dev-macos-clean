@@ -1,5 +1,5 @@
 #!/bin/sh
-# Xcode build phase: builds the shared UI (desktop/) and the TypeScript engine
+# Xcode build phase: builds the shared UI (ui/) and the TypeScript engine
 # (core/, with rules/ embedded) with Bun and copies them into the app.
 # Xcode doesn't load the shell profile, so look for Bun in the usual places.
 set -eu
@@ -13,4 +13,4 @@ bun scripts/build.ts
 resources="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH"
 mkdir -p "$resources/ui"
 cp dist/engine/devclean-engine.js "$resources/"
-cp dist/desktop/index.html dist/desktop/renderer.js dist/desktop/style.css "$resources/ui/"
+cp dist/ui/index.html dist/ui/renderer.js dist/ui/style.css "$resources/ui/"

@@ -1,4 +1,4 @@
-// Requests from the shared web UI are validated like the Electron IPC handlers.
+// Requests from the shared web UI: only indices and tokens get through.
 import Foundation
 import Testing
 @testable import DevCleanKit
@@ -37,7 +37,7 @@ import Testing
     #expect(throws: Cleanup.Failure.self) {try BridgeRequest(body(#"{"method":"cleanup","indices":[\#(indices)],"token":"t"}"#))}
   }
 
-  @Test func confirmationMatchesTheElectronDialog() {
+  @Test func confirmationListsReviewItemsApart() {
     var safe = Finding(ruleId: "npm-cache", category: "node", severity: .safe, path: "/h/.npm/_cacache", sizeBytes: 3 * 1024 * 1024 / 2)
     safe.cleanupReview = false
     var review = Finding(ruleId: "user-logs", category: "logs", severity: .review, path: "/h/Library/Logs/x", sizeBytes: 1024 * 1024)
@@ -49,7 +49,7 @@ import Testing
     #expect(Confirmation([safe], automatic: true).message == "Limpeza automática: mover 1 cache(s) e dependência(s) para a Lixeira?")
   }
 
-  @Test func cleanupReplyHasThePreloadShape() throws {
+  @Test func cleanupReplyHasTheBridgeShape() throws {
     var outcome = Cleanup.Outcome()
     outcome.moved = [("/a", 5)]
     outcome.errors = [("/b", "falhou")]

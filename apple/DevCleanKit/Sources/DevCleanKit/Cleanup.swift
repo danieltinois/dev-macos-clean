@@ -1,4 +1,4 @@
-// The trusted side of cleanup, like desktop/cleanup.ts: the engine's policy
+// The trusted side of cleanup: the engine's policy
 // (core/policy.ts) decides what may move; this captures identities at scan time,
 // issues report tokens and revalidates every target right before the Trash.
 //

@@ -1,5 +1,5 @@
-// The Node adapter: the only module in core/ that uses node: APIs. The CLI,
-// Electron and tests run the engine through it; the Swift apps provide their own Host.
+// The Node adapter: the only module in core/ that uses node: APIs. The CLI and
+// the tests run the engine through it; the Swift apps provide their own Host.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

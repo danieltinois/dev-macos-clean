@@ -1,7 +1,6 @@
-// The desktop UI (desktop/renderer.ts) talks to its shell through
-// `window.devclean`. In the Swift app those calls arrive as script messages;
-// this validates them like desktop/main.ts does for IPC: only indices into the
-// last report plus its token, never paths from the page.
+// The web UI (ui/renderer.ts) talks to its shell through `window.devclean`.
+// In the Swift app those calls arrive as script messages; this validates them:
+// only indices into the last report plus its token, never paths from the page.
 import Foundation
 
 public enum BridgeRequest: Equatable, Sendable {
@@ -48,14 +47,14 @@ public enum BridgeRequest: Equatable, Sendable {
     return Int(double)
   }
 
-  // Like `automatic === true` in main.ts.
+  // Only a real boolean `true`, like `automatic === true` in JavaScript.
   static func isTrue(_ value: Any?) -> Bool {
     guard let number = value as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() else {return false}
     return number.boolValue
   }
 }
 
-// JSON replies in the shapes desktop/preload.ts declares.
+// JSON replies in the shapes ui/bridge.ts declares.
 public enum BridgeReply {
   public static let canceled = #"{"canceled":true}"#
 
@@ -77,7 +76,7 @@ public enum BridgeReply {
   }
 }
 
-// The cleanup confirmation, with the same wording as desktop/main.ts.
+// The cleanup confirmation on the Mac.
 public struct Confirmation: Equatable, Sendable {
   public let title: String
   public let message: String

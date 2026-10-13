@@ -1,7 +1,7 @@
 import {test} from 'bun:test';
 import assert from 'node:assert/strict';
 import {pick, visible, type Filters} from './selection';
-import type {CleanupFinding} from './cleanup';
+import type {CleanupFinding} from './bridge';
 
 const finding = (path: string, fields: Partial<CleanupFinding> = {}) => ({
   rule_id: 'npm-cache', name: 'Cache', category: 'node', severity: 'SAFE', reclaimable: true, description: '', path,
