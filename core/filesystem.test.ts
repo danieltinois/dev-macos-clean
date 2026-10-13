@@ -3,13 +3,19 @@ import {afterEach, test} from 'bun:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import {dirSize, measure, excluded, expandPath, glob, fnmatch, iterMatches, type WalkOptions} from './filesystem';
+import * as filesystem from './filesystem';
+import {excluded, fnmatch, type WalkOptions} from './filesystem';
+import {nodeHost} from './node';
 import {formatBytes, formatAgo} from './format';
 import {makeFile, buildTree, tempDir, removeTempDirs, block, isRoot} from './test-support';
 
 afterEach(removeTempDirs);
 
-const walk = (roots: string[], patterns: string[], options: Partial<WalkOptions> = {}) => [...iterMatches(roots, patterns, {maxDepth: 6, maxDirs: 1000, excludes: [], ...options})].sort();
+const dirSize = (target: string, options?: filesystem.SizeOptions) => filesystem.dirSize(nodeHost, target, options);
+const measure = (target: string) => filesystem.measure(nodeHost, target);
+const glob = (pattern: string) => filesystem.glob(nodeHost, pattern);
+const expandPath = (entry: string, home: string) => filesystem.expandPath(entry, home, name => process.env[name]);
+const walk = (roots: string[], patterns: string[], options: Partial<WalkOptions> = {}) => [...filesystem.iterMatches(nodeHost, roots, patterns, {maxDepth: 6, maxDirs: 1000, excludes: [], ...options})].sort();
 
 test('dirSize sums files', () => {
   const dir = tempDir();

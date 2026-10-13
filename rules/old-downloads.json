@@ -1,0 +1,10 @@
+{
+  "id": "old-downloads",
+  "name": "Downloads antigos",
+  "category": "downloads",
+  "severity": "REVIEW",
+  "reclaimable": false,
+  "description": "Arquivos baixados há mais de 30 dias, numa pasta Downloads que você escolheu no app Arquivos. Costumam ser PDFs, instaladores e anexos já usados.",
+  "files": {"folder": "Downloads", "min_age_days": 30},
+  "rebuild": {"description": "Não se recria; baixe de novo se precisar. Fica em Apagados no app Arquivos até sumir de vez."}
+}

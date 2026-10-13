@@ -1,14 +1,34 @@
-// Load and validate declarative rules from JSON files (one rule per file).
+// Validate declarative rules parsed from JSON files (one rule per file).
 // Everything that can be checked statically (ids, severity, required fields,
 // unknown keys) is enforced here, so a typo never reaches the scanner.
-import fs from 'node:fs';
-import path from 'node:path';
-import type {Rule, Severity} from './types';
+// Reading the files is the caller's job (loadRules in node.ts).
+import type {FileMatch, PhotoMatch, Rule, Severity} from './types';
 
-export const DEFAULT_RULES_DIR = path.resolve(import.meta.dirname, '..', 'rules');
 export const SEVERITIES: readonly Severity[] = ['SAFE', 'REVIEW', 'DANGER'];
 const SLUG = /^[a-z0-9][a-z0-9-]*$/;
-const RULE_KEYS = new Set(['id', 'name', 'category', 'severity', 'reclaimable', 'description', 'paths', 'patterns', 'markers', 'rebuild']);
+const RULE_KEYS = new Set(['id', 'name', 'category', 'severity', 'reclaimable', 'description', 'paths', 'patterns', 'markers', 'photos', 'files', 'rebuild']);
+const PHOTO_VALUES: Record<string, readonly string[]> = {media: ['image', 'video'], subtype: ['screenshot', 'screen-recording'], burst: ['extra'], duplicate: ['extra'], similar: ['extra']};
+const NUMBERS = ['min_bytes', 'min_age_days'];
+
+// Photo and file criteria: each key is a known choice, a non-negative integer or,
+// for files, a folder name.
+function validateMatch(field: 'photos' | 'files', value: unknown, choices: Record<string, readonly string[]>): object {
+  if (!isObject(value)) throw new Error(`${field} must be an object`);
+  const keys = Object.keys(value);
+  if (!keys.length) throw new Error(`${field} needs at least one criterion`);
+  for (const key of keys) {
+    const allowed = choices[key];
+    if (allowed) {
+      if (!allowed.includes(value[key] as string)) throw new Error(`${field}.${key} must be one of ${allowed.join(', ')}`);
+    } else if (NUMBERS.includes(key)) {
+      if (!Number.isInteger(value[key]) || (value[key] as number) < 0) throw new Error(`${field}.${key} must be a non-negative integer`);
+    } else if (field === 'files' && key === 'folder') {
+      const folder = value[key];
+      if (typeof folder !== 'string' || !folder || folder.includes('/')) throw new Error('files.folder must be a plain folder name');
+    } else throw new Error(`unknown ${field} field(s): ${key}`);
+  }
+  return value;
+}
 const REBUILD_KEYS = new Set(['description', 'commands']);
 
 export class RuleError extends Error {}
@@ -34,7 +54,11 @@ export function validateRule(data: unknown): Rule {
     if (!isStringList(value)) throw new Error(`${key} must be a list of strings`);
   }
   const {paths, patterns, markers} = lists as Record<keyof typeof lists, string[]>;
-  if (!paths.length && !patterns.length) throw new Error('rule must define at least one of paths or patterns');
+  const photos = data.photos === undefined || data.photos === null ? null : validateMatch('photos', data.photos, PHOTO_VALUES) as PhotoMatch;
+  const files = data.files === undefined || data.files === null ? null : validateMatch('files', data.files, {}) as FileMatch;
+  if (photos && files) throw new Error('a rule matches photos or files, not both');
+  if ((photos || files) && (paths.length || patterns.length || markers.length)) throw new Error(`${photos ? 'photos' : 'files'} rules take no paths, patterns or markers`);
+  if (!paths.length && !patterns.length && !photos && !files) throw new Error('rule must define at least one of paths, patterns, photos or files');
   if (markers.length && !patterns.length) throw new Error('markers only apply to patterns');
   if (markers.some(marker => marker.includes('/') || ['', '.', '..'].includes(marker))) throw new Error('markers must be plain file names');
   let rebuild: Rule['rebuild'] = null;
@@ -47,21 +71,19 @@ export function validateRule(data: unknown): Rule {
     if (commands !== undefined && !isStringList(commands)) throw new Error('rebuild.commands must be a list of strings');
     rebuild = {description, commands: commands ?? []};
   }
-  return {...(data as Omit<Rule, 'paths' | 'patterns' | 'markers' | 'rebuild'>), paths, patterns, markers, rebuild};
+  return {...(data as Omit<Rule, 'paths' | 'patterns' | 'markers' | 'photos' | 'files' | 'rebuild'>), paths, patterns, markers, photos, files, rebuild};
 }
 
-// Load every `*.json` in `directory` (default: the project's rules/) as one rule each.
-export function loadRules(directory = DEFAULT_RULES_DIR): Rule[] {
-  let files: string[];
-  try {files = fs.readdirSync(directory).filter(name => name.endsWith('.json')).sort();} catch {
-    throw new RuleError(`rules directory not found: ${directory}`);
-  }
-  const rules = files.map(file => {
+export interface RuleFile {name: string; text: string}
+
+// Parse `files` (only `*.json` names are used, in name order) as one rule each.
+export function parseRules(files: RuleFile[]): Rule[] {
+  const rules = files.filter(file => file.name.endsWith('.json')).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0).map(({name, text}) => {
     let data: unknown;
-    try {data = JSON.parse(fs.readFileSync(path.join(directory, file), 'utf8'));} catch (error) {
-      throw new RuleError(`${file}: invalid JSON: ${(error as Error).message}`);
+    try {data = JSON.parse(text);} catch (error) {
+      throw new RuleError(`${name}: invalid JSON: ${(error as Error).message}`);
     }
-    try {return validateRule(data);} catch (error) {throw new RuleError(`${file}: invalid rule: ${(error as Error).message}`);}
+    try {return validateRule(data);} catch (error) {throw new RuleError(`${name}: invalid rule: ${(error as Error).message}`);}
   });
   const ids = rules.map(rule => rule.id);
   const dupes = [...new Set(ids.filter((id, index) => ids.indexOf(id) !== index))].sort();

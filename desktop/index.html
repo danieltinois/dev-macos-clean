@@ -6,10 +6,11 @@
   <title>DevClean</title><link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header class="titlebar"><span class="brand">devclean<span class="version">0.1</span></span><span class="mode">macOS / storage</span></header>
+  <header class="titlebar"><span class="brand">devclean<span class="version">0.1</span></span><span class="mode" id="mode">macOS / storage</span></header>
   <main>
     <section class="heading"><div class="brand-group"><div><h1 class="sr-only">DevClean</h1><pre id="logo" class="logo" aria-hidden="true"></pre><p>Caches, dependências, logs e arquivos para revisão.</p></div></div><div class="actions"><button id="tour-open" class="subtle" title="Tour guiado pelo Floco">? Tutorial</button><button id="scan">Analisar</button><button id="auto" class="primary" disabled title="Envia à Lixeira caches que se recriam sozinhos e dependências de projetos parados há 90+ dias">Limpeza automática</button></div></section>
-    <div class="scope"><div class="scope-path"><span class="label">ESCOPO</span><code>Mac inteiro · caches, projetos e arquivos para revisão</code></div><span class="scope-note">Disco local · acesso permitido pelo macOS</span></div>
+    <div class="scope"><div class="scope-path"><span class="label">ESCOPO</span><code id="scope">Mac inteiro · caches, projetos e arquivos para revisão</code></div><span class="scope-note" id="scope-note">Disco local · acesso permitido pelo macOS</span></div>
+    <div class="folders" id="folders" hidden><span class="label">ARQUIVOS</span><span id="folder-list" class="folder-list"></span><button id="add-folder" class="subtle" type="button">+ Pasta do Arquivos</button></div>
     <div class="layout">
     <aside class="overview" aria-label="Resumo da análise">
       <section class="mascot"><p class="away">Fui ali te mostrar o app! Já volto.</p><button id="cat" type="button" class="cat" aria-label="Fazer carinho no gato" title="Faça carinho"><pre id="cat-art" aria-hidden="true"></pre></button><div id="cat-says" class="bubble" aria-hidden="true"></div></section>
@@ -18,6 +19,7 @@
         <article><div class="label"><span class="dot"></span> LIMPEZA SEGURA</div><strong id="safe">—</strong><code class="meter" id="safe-bar" aria-hidden="true"></code><small>Caches e dependências que se recriam</small></article>
         <article><div class="label"><span class="dot amber"></span> REVISAR</div><strong id="review">—</strong><code class="meter" id="review-bar" aria-hidden="true"></code><small>Conferir antes, ou limpar fora do app</small></article>
       </section>
+      <section class="disk" id="disk" aria-label="Espaço em disco" hidden><div class="breakdown-head"><span class="label" id="disk-title">DISCO DO MAC</span><span class="hint" id="disk-total"></span></div><code class="meter" id="disk-bar" aria-hidden="true"></code><div id="disk-detail"></div></section>
       <section class="breakdown" aria-label="Espaço por ferramenta"><div class="breakdown-head"><span class="label">POR FERRAMENTA</span><span class="hint" id="breakdown-hint">clique para filtrar</span></div><div id="breakdown"></div></section>
     </aside>
     <section class="results">
@@ -31,7 +33,7 @@
     <div id="warnings"></div>
     <footer><div class="status-line"><span class="dot" id="status-dot"></span><span id="status" role="status" aria-live="polite">Pronto</span></div><span id="timestamp">Limpeza via Lixeira · restauração pelo Finder.</span></footer>
   </main>
-  <dialog id="details"><div class="dialog-head"><h2 id="detail-title"></h2><button id="close" aria-label="Fechar detalhes">Fechar <kbd>esc</kbd></button></div><div id="detail-body"></div><button id="reveal" class="primary">Mostrar no Finder</button></dialog>
+  <dialog id="details"><div class="dialog-head"><h2 id="detail-title"></h2><button id="close" aria-label="Fechar detalhes">Fechar <kbd>esc</kbd></button></div><div id="detail-body"></div><button id="reveal" class="primary">Mostrar no Finder</button><div id="opening" class="opening" hidden><span id="opening-spinner" class="opening-spinner" aria-hidden="true"></span><p id="opening-text" role="status"></p></div></dialog>
   <div id="tour" hidden>
     <div id="tour-spot" aria-hidden="true"></div>
     <section id="tour-guide" role="dialog" aria-modal="true" aria-label="Tutorial do DevClean">

@@ -4,11 +4,14 @@ import type {CleanupFinding} from './cleanup';
 export interface Filters {query: string; category: string; severity: string}
 export type Indexed = CleanupFinding & {index: number};
 
+// What to show as the location: the path, or a label for items without one (photos).
+export const where = (f: Pick<CleanupFinding, 'path' | 'metadata'>) => f.metadata?.label ?? f.path;
+
 // Findings that pass the toolbar filters, each with its index in the report.
 export function visible(findings: CleanupFinding[], {query, category, severity}: Filters): Indexed[] {
   const needle = query.toLowerCase();
   return findings.map((f, index) => ({...f, index})).filter(f =>
-    (!category || f.category === category) && (!severity || f.severity === severity) && `${f.name} ${f.path}`.toLowerCase().includes(needle));
+    (!category || f.category === category) && (!severity || f.severity === severity) && `${f.name} ${where(f)}`.toLowerCase().includes(needle));
 }
 
 // Report indices of the cleanable `items` matching `predicate`. Shortest paths

@@ -3,7 +3,8 @@ import {afterEach, test} from 'bun:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import {loadRules, RuleError} from './rules';
+import {loadRules} from './node';
+import {RuleError} from './rules';
 import {removeTempDirs, tempDir} from './test-support';
 
 afterEach(removeTempDirs);
@@ -42,7 +43,26 @@ test('AVD rule uses a glob path and needs review', () => {
 
 test('invalid severity is rejected', () => rejects({...BASE, severity: 'VERY_SAFE', paths: ['/x']}, /severity/));
 test('unknown key is rejected', () => rejects({...BASE, paths: ['/x'], typo_field: 1}, /typo_field/));
-test('rule without target is rejected', () => rejects(BASE, /paths or patterns/));
+test('rule without target is rejected', () => rejects(BASE, /paths, patterns, photos or files/));
+test('photo rules are validated strictly', () => {
+  rejects({...BASE, photos: {}}, /at least one criterion/);
+  rejects({...BASE, photos: {media: 'audio'}}, /photos.media/);
+  rejects({...BASE, photos: {min_bytes: -1}}, /non-negative integer/);
+  rejects({...BASE, photos: {min_age_days: 1.5}}, /non-negative integer/);
+  rejects({...BASE, photos: {color: 'red'}}, /unknown photos field/);
+  rejects({...BASE, photos: {stored: 'device'}}, /unknown photos field/);
+  rejects({...BASE, files: {folder: 'a/b'}}, /plain folder name/);
+  rejects({...BASE, files: {min_bytes: 1}, photos: {media: 'video'}}, /photos or files, not both/);
+  rejects({...BASE, photos: {media: 'video'}, paths: ['/x']}, /no paths, patterns or markers/);
+});
+test('photo and file rules ship for the iPhone, all for review', () => {
+  const photos = loadRules().filter(rule => rule.photos || rule.files);
+  assert.deepEqual(photos.map(rule => rule.id), ['burst-extras', 'duplicate-photos', 'large-files', 'large-photos', 'large-videos', 'old-downloads', 'screen-recordings', 'screenshots', 'similar-photos']);
+  for (const rule of photos) {
+    assert.equal(rule.severity, 'REVIEW', rule.id);
+    assert.deepEqual([rule.paths, rule.patterns, rule.markers], [[], [], []]);
+  }
+});
 test('non-slug id is rejected', () => rejects({...BASE, id: 'Bad Id', paths: ['/x']}, /id/));
 test('unknown rebuild key is rejected', () => rejects({...BASE, paths: ['/x'], rebuild: {description: 'd', run: 'x'}}, /rebuild/));
 test('markers need patterns', () => rejects({...BASE, paths: ['/x'], markers: ['Cargo.toml']}, /markers/));

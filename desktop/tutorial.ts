@@ -3,6 +3,7 @@
 import {portrait} from '../core/cat';
 import {createMascot, type MascotState} from './mascot';
 import {reduced} from './motion';
+import {PLATFORMS, type Platform} from './platform';
 
 export interface TourContext {
   // Whether a scan already ran. On first launch the tour comes before the first scan.
@@ -16,23 +17,35 @@ export interface Step {
 }
 
 export const CAT_NAME = 'Floco';
-export const STEPS: Step[] = [
-  {text: `Oi! Eu sou o ${CAT_NAME}, o gato da faxina. Vou te mostrar o DevClean num minutinho.`},
-  {target: '#scan', text: ({scanned}) => scanned
-    ? 'Aqui eu vasculho o Mac atrás de caches, node_modules e outras tralhas de dev. Eu já faço isso sozinho quando o app abre.'
-    : 'Esse botão vasculha o Mac atrás de caches, node_modules e outras tralhas de dev. Assim que a gente terminar, eu faço a primeira análise.'},
-  {target: '.stats', text: 'O resumo: quanto eu achei, quanto dá pra limpar sem medo e quanto é melhor você conferir antes.'},
-  {target: '.breakdown', text: 'Espaço por ferramenta, do maior pro menor. Clica numa barra que eu filtro a lista pra você.'},
-  {target: '.filters', text: 'Também dá pra buscar por nome ou caminho, filtrar por risco e mudar a ordem.'},
-  {target: ['#list .row', '#list'], text: 'Cada linha é um achado: ferramenta, caminho, risco e tamanho. Clica pra ver detalhes e como recriar. Cadeado quer dizer que eu não deixo limpar, e eu explico o porquê.'},
-  {target: '.quick', text: '"Selecionar tudo" pega só o que está nos filtros. "Projetos parados" pega dependências de projetos sem mexer há 90+ dias.'},
-  {target: '#clean', text: 'Escolheu? Manda pra Lixeira. Eu sempre peço confirmação, e dá pra restaurar pelo Finder.'},
-  {target: '#auto', text: 'Com pressa? A limpeza automática leva só caches que se recriam sozinhos e dependências de projetos parados.'},
-  {target: '.mascot', text: 'E aqui é o meu cantinho. Quando a gente terminar eu volto pra cá, fico dando dicas e aceito carinho.'},
-  {target: '#tour-open', mood: 'done', text: ({scanned}) => scanned
-    ? 'Pronto! Se quiser rever, é só clicar em Tutorial. Boa faxina!'
-    : 'Pronto! Agora eu começo a análise. Se quiser rever o tour, é só clicar em Tutorial.'},
-];
+// The tour for `platform`; the iPhone skips what it doesn't have.
+export function stepsFor(platform: Platform): Step[] {
+  const {device, lookWhat} = platform;
+  return [
+    {text: `Oi! Eu sou o ${CAT_NAME}, o gato da faxina. Vou te mostrar o DevClean num minutinho.`},
+    {target: '#scan', text: ({scanned}) => scanned
+      ? `Aqui eu vasculho o ${device} atrás de ${lookWhat}. Eu já faço isso sozinho quando o app abre.`
+      : `Esse botão vasculha o ${device} atrás de ${lookWhat}. Assim que a gente terminar, eu faço a primeira análise.`},
+    ...platform.folders ? [{target: '#add-folder', text: 'Quer que eu olhe o app Arquivos também? Escolhe uma pasta aqui, tipo Downloads ou o iCloud Drive inteiro.'}] : [],
+    {target: '.stats', text: 'O resumo: quanto eu achei, quanto dá pra limpar sem medo e quanto é melhor você conferir antes.'},
+    {target: ['#disk', '.stats'], text: `O espaço do ${device}: o que está em uso, o que eu achei, o que o sistema libera sozinho e quanto está livre.`},
+    {target: '.breakdown', text: 'Espaço por ferramenta, do maior pro menor. Clica numa barra que eu filtro a lista pra você.'},
+    {target: '.filters', text: 'Também dá pra buscar por nome ou caminho, filtrar por risco e mudar a ordem.'},
+    {target: ['#list .row', '#list'], text: 'Cada linha é um achado: ferramenta, caminho, risco e tamanho. Clica pra ver detalhes e como recriar. Cadeado quer dizer que eu não deixo limpar, e eu explico o porquê.'},
+    ...platform.automatic ? [
+      {target: '.quick', text: '"Selecionar tudo" pega só o que está nos filtros. "Projetos parados" pega dependências de projetos sem mexer há 90+ dias.'},
+      {target: '#clean', text: 'Escolheu? Manda pra Lixeira. Eu sempre peço confirmação, e dá pra restaurar pelo Finder.'},
+      {target: '#auto', text: 'Com pressa? A limpeza automática leva só caches que se recriam sozinhos e dependências de projetos parados.'},
+    ] : [
+      {target: '.quick', text: '"Selecionar tudo" pega só o que está nos filtros. Aqui nada é automático: foto é sua, você escolhe.'},
+      {target: '#clean', text: 'Escolheu? Manda pra Apagados. O iPhone pede confirmação, e dá pra recuperar no app Fotos por 30 dias.'},
+    ],
+    {target: '.mascot', text: 'E aqui é o meu cantinho. Quando a gente terminar eu volto pra cá, fico dando dicas e aceito carinho.'},
+    {target: '#tour-open', mood: 'done', text: ({scanned}) => scanned
+      ? 'Pronto! Se quiser rever, é só clicar em Tutorial. Boa faxina!'
+      : 'Pronto! Agora eu começo a análise. Se quiser rever o tour, é só clicar em Tutorial.'},
+  ];
+}
+export const STEPS = stepsFor(PLATFORMS.mac);
 
 export interface Box {left: number; top: number; width: number; height: number}
 
@@ -61,7 +74,7 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getEleme
 
 export const stepText = (step: Step, context: TourContext) => typeof step.text === 'function' ? step.text(context) : step.text;
 
-export function createTutorial({onStart, onEnd, context = () => ({scanned: true})}: {onStart?: () => void; onEnd?: () => void; context?: () => TourContext} = {}) {
+export function createTutorial({onStart, onEnd, context = () => ({scanned: true}), steps = STEPS}: {onStart?: () => void; onEnd?: () => void; context?: () => TourContext; steps?: Step[]} = {}) {
   const root = $('tour'), spot = $('tour-spot'), guide = $('tour-guide');
   const guideCat = createMascot($<HTMLButtonElement>('tour-cat'), $('tour-cat-art'), $('tour-text'), {render: portrait, typeMs: 20});
   let index = 0, open = false, returnFocus: HTMLElement | null = null;
@@ -75,7 +88,7 @@ export function createTutorial({onStart, onEnd, context = () => ({scanned: true}
   }
   function layout() {
     if (!open) return;
-    const el = visibleTarget(STEPS[index]!);
+    const el = visibleTarget(steps[index]!);
     const rect = el?.getBoundingClientRect() ?? null, pad = 8;
     if (rect) Object.assign(spot.style, {left: `${rect.left - pad}px`, top: `${rect.top - pad}px`, width: `${rect.width + pad * 2}px`, height: `${rect.height + pad * 2}px`, opacity: '1'});
     else Object.assign(spot.style, {left: '50%', top: '50%', width: '0px', height: '0px', opacity: '0'});
@@ -89,14 +102,14 @@ export function createTutorial({onStart, onEnd, context = () => ({scanned: true}
     guideCat.lookAt(placed.side === 'right' ? -1 : placed.side === 'left' ? 1 : 0);
   }
   function show(next: number) {
-    index = Math.max(0, Math.min(STEPS.length - 1, next));
-    const step = STEPS[index]!;
+    index = Math.max(0, Math.min(steps.length - 1, next));
+    const step = steps[index]!;
     visibleTarget(step)?.scrollIntoView({block: 'center', behavior: reduced() ? 'auto' : 'smooth'});
-    $('tour-progress').textContent = `${index + 1} / ${STEPS.length}`;
+    $('tour-progress').textContent = `${index + 1} / ${steps.length}`;
     const text = stepText(step, context());
     $('tour-sr').textContent = text;
     $<HTMLButtonElement>('tour-back').disabled = index === 0;
-    $('tour-next').textContent = index === STEPS.length - 1 ? 'Concluir' : 'Próximo';
+    $('tour-next').textContent = index === steps.length - 1 ? 'Concluir' : 'Próximo';
     guideCat.set(step.mood ?? 'idle', text);
     // Lay out now and again once smooth scrolling settles.
     requestAnimationFrame(layout);setTimeout(layout, 450);
@@ -115,7 +128,7 @@ export function createTutorial({onStart, onEnd, context = () => ({scanned: true}
     returnFocus?.focus();
   }
   // Mid-sentence, Next finishes the line first; then it moves on.
-  $('tour-next').onclick = () => guideCat.talking() ? guideCat.finish() : index === STEPS.length - 1 ? end() : show(index + 1);
+  $('tour-next').onclick = () => guideCat.talking() ? guideCat.finish() : index === steps.length - 1 ? end() : show(index + 1);
   $('tour-back').onclick = () => show(index - 1);
   $('tour-skip').onclick = end;
   document.addEventListener('keydown', event => {

@@ -1,0 +1,10 @@
+{
+  "id": "similar-photos",
+  "name": "Fotos parecidas",
+  "category": "similar",
+  "severity": "REVIEW",
+  "reclaimable": false,
+  "description": "Fotos quase iguais tiradas no mesmo momento, como várias tentativas da mesma cena. A melhor de cada grupo fica (ou as favoritas, se você marcou alguma) e não entra na lista. Abra para conferir antes de apagar.",
+  "photos": {"similar": "extra"},
+  "rebuild": {"description": "Não se recria, mas a foto escolhida do grupo continua na fototeca. Fica 30 dias em Fotos › Apagados."}
+}
