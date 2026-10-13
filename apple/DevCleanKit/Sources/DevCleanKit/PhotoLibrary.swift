@@ -35,28 +35,26 @@ public enum PhotoLibrary {
     options.includeAllBurstAssets = true
     var assets: [PHAsset] = []
     PHAsset.fetchAssets(with: options).enumerateObjects {asset, _, _ in assets.append(asset)}
+    store.load()
+    defer {store.save()}
     let cloud = inCloud(assets.map(\.localIdentifier))
     let similar = similarGroups(assets, progress: progress)
-    // PhotoKit hands out autoreleased objects; draining them per item keeps large
-    // libraries within an iPhone's memory limit (the system kills the app otherwise).
-    // Reading each item's files is slow on older iPhones, so it reports progress too.
-    var items = assets.enumerated().map {index, asset in
-      if index % 200 == 0 {progress("Medindo fotos e vídeos… \(index) de \(assets.count)")}
-      return autoreleasepool {
-        var item = describe(asset, cloud: cloud)
-        item["favorite"] = asset.isFavorite
-        item["similar"] = similar[asset.localIdentifier]?.group ?? NSNull()
-        item["score"] = similar[asset.localIdentifier]?.score ?? NSNull()
-        return item
-      }
+    // Reading each item's resources is slow, so it runs on every core.
+    var items = Parallel.map(assets.count, every: 200, progress: {progress("Medindo fotos e vídeos… \($0) de \(assets.count)")}) {index in
+      let asset = assets[index]
+      var item = describe(asset, cloud: cloud)
+      item["favorite"] = asset.isFavorite
+      item["similar"] = similar[asset.localIdentifier]?.group ?? NSNull()
+      item["score"] = similar[asset.localIdentifier]?.score ?? NSNull()
+      return item
     }
     hashPossibleCopies(&items, assets, progress: progress)
     return items
   }
 
   // Items that match another in kind, pixel size, duration and bytes might be
-  // copies: hash their content, so only identical bytes count (automatic cleanup
-  // takes copies). Only what is on the device; nothing is downloaded.
+  // copies: hash their content, so only identical bytes count. Only what is on
+  // the device; nothing is downloaded. Hashes are kept between scans.
   private static func hashPossibleCopies(_ items: inout [[String: Any]], _ assets: [PHAsset], progress: @Sendable (String) -> Void) {
     var groups: [String: [Int]] = [:]
     for (index, item) in items.enumerated() {
@@ -64,10 +62,14 @@ public enum PhotoLibrary {
       groups["\(item["media"] ?? "") \(width)x\(item["height"] ?? 0) \(item["duration_ms"] ?? 0) \(bytes)", default: []].append(index)
     }
     let candidates = groups.values.filter {$0.count > 1}.flatMap {$0}
-    for (done, index) in candidates.enumerated() {
-      if done % 20 == 0 {progress("Conferindo cópias… \(done) de \(candidates.count)")}
-      items[index]["digest"] = autoreleasepool {digest(assets[index])} ?? NSNull()
+    let digests = Parallel.map(candidates.count, every: 20, progress: {progress("Conferindo cópias… \($0) de \(candidates.count)")}) {i -> String? in
+      let asset = assets[candidates[i]], key = Self.key(asset)
+      if let known = store.digest(key) {return known}
+      let value = digest(asset)
+      if let value {store.setDigest(key, value)}
+      return value
     }
+    for (i, index) in candidates.enumerated() {items[index]["digest"] = digests[i] ?? NSNull()}
   }
 
   // SHA-256 of the item's original, read from the device; nil when it can't be read.
@@ -93,38 +95,41 @@ public enum PhotoLibrary {
   }
 
   // Camera photos taken in a row (no screenshots, no bursts: those have their own
-  // rules) that look alike, with each member's score. See SimilarPhotos.
+  // rules) that look alike, with each member's score. See SimilarPhotos. Feature
+  // prints and scores run on every core and are kept between scans.
   private static func similarGroups(_ assets: [PHAsset], progress: @Sendable (String) -> Void) -> [String: (group: String, score: Any)] {
     let photos = assets.filter {$0.mediaType == .image && !$0.mediaSubtypes.contains(.photoScreenshot) && $0.burstIdentifier == nil && $0.creationDate != nil}
     let byId = Dictionary(photos.map {($0.localIdentifier, $0)}, uniquingKeysWith: {a, _ in a})
     let sessions = SimilarPhotos.sessions(photos.map {SimilarPhotos.Photo(id: $0.localIdentifier, date: $0.creationDate!)})
-    let total = sessions.reduce(0) {$0 + $1.count}
-    var result: [String: (group: String, score: Any)] = [:], done = 0
-    for session in sessions {
-      var prints: [(id: String, print: VNFeaturePrintObservation)] = []
-      for photo in session {
-        if done % 20 == 0 {progress("Comparando fotos parecidas… \(done) de \(total)")}
-        done += 1
-        if let asset = byId[photo.id], let print = autoreleasepool(invoking: {analysis(asset).print}) {prints.append((photo.id, print))}
-      }
-      for group in SimilarPhotos.groups(prints) {
-        for id in group {result[id] = (group[0], autoreleasepool {byId[id].flatMap {analysis($0, scored: true).score}} ?? NSNull())}
-      }
+    let flat = sessions.flatMap {$0}
+    let prints = Parallel.map(flat.count, every: 20, progress: {progress("Comparando fotos parecidas… \($0) de \(flat.count)")}) {i in
+      byId[flat[i].id].flatMap {analysis($0).print}
     }
+    var printById: [String: VNFeaturePrintObservation] = [:]
+    for (i, print) in prints.enumerated() {if let print {printById[flat[i].id] = print}}
+    let groups = sessions.flatMap {session in SimilarPhotos.groups(session.compactMap {photo in printById[photo.id].map {(photo.id, $0)}})}
+    let members = groups.flatMap {group in group.map {(id: $0, group: group[0])}}
+    let scores = Parallel.map(members.count) {i in byId[members[i].id].flatMap {analysis($0, scored: true).score}}
+    var result: [String: (group: String, score: Any)] = [:]
+    for (i, member) in members.enumerated() {result[member.id] = (member.group, scores[i] ?? NSNull())}
     return result
   }
 
-  // Feature print and score of one photo, kept per app session (keyed by id and
-  // edit date) so a new scan after picking a folder doesn't redo the work.
+  // Feature print and score of one photo, from the store when the photo hasn't
+  // changed since the last scan.
   private static func analysis(_ asset: PHAsset, scored: Bool = false) -> (print: VNFeaturePrintObservation?, score: Double?) {
-    let key = "\(asset.localIdentifier)@\(asset.modificationDate?.timeIntervalSince1970 ?? 0)"
-    let cached = cache.get(key)
-    if let cached, !scored || cached.score != nil {return cached}
+    let key = Self.key(asset)
+    let print = store.print(key), score = store.score(key)
+    if let print, !scored || score != nil {return (print, score)}
     guard let image = thumbnail(asset) else {return (nil, nil)}
-    let entry = (print: cached?.print ?? SimilarPhotos.featurePrint(image), score: scored ? SimilarPhotos.score(image) : nil)
-    cache.set(key, entry)
+    let entry = (print: print ?? SimilarPhotos.featurePrint(image), score: scored ? SimilarPhotos.score(image) : score)
+    if let fresh = entry.print, print == nil {store.setPrint(key, fresh)}
+    if let value = entry.score, score == nil {store.setScore(key, value)}
     return entry
   }
+
+  // A photo's identity for the store: changes when the photo is edited.
+  private static func key(_ asset: PHAsset) -> String {"\(asset.localIdentifier)@\(asset.modificationDate?.timeIntervalSince1970 ?? 0)"}
 
   // A small local thumbnail; nothing is downloaded from iCloud.
   private static func thumbnail(_ asset: PHAsset) -> CGImage? {
@@ -140,13 +145,57 @@ public enum PhotoLibrary {
 
   private final class ImageBox: @unchecked Sendable {var image: CGImage?}
 
-  private final class Cache: @unchecked Sendable {
-    private var entries: [String: (print: VNFeaturePrintObservation?, score: Double?)] = [:]
+  // What the slow steps learned about each photo (feature print, score, content
+  // hash), saved in the app's Caches between scans, so the next scan only works
+  // on new or edited photos. Entries no scan used are dropped on save.
+  private final class Store: @unchecked Sendable {
+    struct Entry: Codable {var print: Data?; var score: Double?; var digest: String?}
+    private var entries: [String: Entry] = [:]
+    private var used = Set<String>()
+    private var decoded: [String: VNFeaturePrintObservation] = [:]
+    private var loaded = false
     private let lock = NSLock()
-    func get(_ key: String) -> (print: VNFeaturePrintObservation?, score: Double?)? {lock.withLock {entries[key]}}
-    func set(_ key: String, _ value: (print: VNFeaturePrintObservation?, score: Double?)) {lock.withLock {entries[key] = value}}
+    private let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("devclean-photo-analysis.plist")
+
+    func load() {
+      lock.withLock {
+        used = []
+        guard !loaded else {return}
+        loaded = true
+        if let data = try? Data(contentsOf: url), let saved = try? PropertyListDecoder().decode([String: Entry].self, from: data) {entries = saved}
+      }
+    }
+
+    func save() {
+      let snapshot: [String: Entry] = lock.withLock {
+        entries = entries.filter {used.contains($0.key)}
+        decoded = decoded.filter {used.contains($0.key)}
+        return entries
+      }
+      let encoder = PropertyListEncoder()
+      encoder.outputFormat = .binary
+      try? encoder.encode(snapshot).write(to: url, options: .atomic)
+    }
+
+    func print(_ key: String) -> VNFeaturePrintObservation? {
+      lock.withLock {
+        used.insert(key)
+        if let print = decoded[key] {return print}
+        guard let data = entries[key]?.print, let print = try? NSKeyedUnarchiver.unarchivedObject(ofClass: VNFeaturePrintObservation.self, from: data) else {return nil}
+        decoded[key] = print
+        return print
+      }
+    }
+    func setPrint(_ key: String, _ print: VNFeaturePrintObservation) {
+      let data = try? NSKeyedArchiver.archivedData(withRootObject: print, requiringSecureCoding: true)
+      lock.withLock {used.insert(key); decoded[key] = print; entries[key, default: Entry()].print = data}
+    }
+    func score(_ key: String) -> Double? {lock.withLock {used.insert(key); return entries[key]?.score}}
+    func setScore(_ key: String, _ score: Double) {lock.withLock {used.insert(key); entries[key, default: Entry()].score = score}}
+    func digest(_ key: String) -> String? {lock.withLock {used.insert(key); return entries[key]?.digest}}
+    func setDigest(_ key: String, _ digest: String) {lock.withLock {used.insert(key); entries[key, default: Entry()].digest = digest}}
   }
-  private static let cache = Cache()
+  private static let store = Store()
 
   // Items in iCloud Photos: those with a cloud identifier. nil when it can't tell.
   // Asked in batches, so a large library never builds one huge answer.
@@ -238,12 +287,11 @@ public enum PhotoLibrary {
         PHAsset.fetchAssets(withLocalIdentifiers: Array(ids[start..<min(start + 500, ids.count)]), options: nil).enumerateObjects {asset, _, _ in assets[asset.localIdentifier] = asset}
       }
     }
-    var cloud = Set<String>()
-    for (done, id) in ids.enumerated() {
-      if done % 25 == 0 {progress("Conferindo o que está no iPhone… \(done) de \(ids.count)")}
-      if let asset = assets[id], autoreleasepool(invoking: {needsDownload(asset)}) {cloud.insert(prefix + id)}
+    // One small read per item, on every core.
+    let needed = Parallel.map(ids.count, every: 25, progress: {progress("Conferindo o que está no iPhone… \($0) de \(ids.count)")}) {i in
+      assets[ids[i]].map(needsDownload) ?? false
     }
-    return cloud
+    return Set(ids.indices.filter {needed[$0]}.map {prefix + ids[$0]})
   }
 
   private static func needsDownload(_ asset: PHAsset) -> Bool {

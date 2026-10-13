@@ -47,8 +47,8 @@ public struct Platform: Sendable, Equatable {
     footer: "Limpeza via Apagados · recuperável nos apps Fotos e Arquivos.",
     send: "Enviar para Apagados", toTrash: "para Apagados", inTrash: "em Apagados", cheer: "Pra Apagados!",
     freeSpace: "Para liberar espaço já, apague de vez em Apagados, no app Fotos ou Arquivos.", catFreeSpace: "O espaço volta quando Apagados esvaziar.",
-    reveal: "Abrir para conferir", opening: "Abrindo… Vídeos grandes podem levar alguns segundos.", automatic: true,
-    autoHelp: "Envia para Apagados as cópias idênticas e as fotos extras de rajadas: sempre sobra uma",
+    reveal: "Abrir para conferir", opening: "Abrindo… Vídeos grandes podem levar alguns segundos.", automatic: false,
+    autoHelp: "",
     safeNote: "Cópias idênticas e extras de rajadas: sempre sobra uma", staleProjects: false, folders: true,
     disk: "ARMAZENAMENTO DO IPHONE", foundNote: "Fica livre quando Apagados esvaziar", purgeableNote: "Caches e originais do iCloud que o iOS apaga sozinho quando falta espaço",
     scanning: "Varrendo fotos e vídeos…", lookWhat: "vídeos grandes, fotos repetidas, capturas de tela velhas e outras tralhas")
@@ -111,14 +111,20 @@ public extension Finding {
   var isSafe: Bool {cleanupAllowed == true && cleanupReview != true}
   // A stale project output picked by automatic cleanup.
   var isStale: Bool {autoClean == true && metadata["project"] != nil}
+  // Items only in iCloud (iPhone) take almost no space on the device.
+  var onDevice: Bool {metadata["on_device"] != "no"}
 }
 
 // MARK: Filters and selection
 
 public struct Filters: Equatable, Sendable {
   public var query = "", category = "", severity = ""
-  public init(query: String = "", category: String = "", severity: String = "") {self.query = query; self.category = category; self.severity = severity}
-  public var isActive: Bool {!query.isEmpty || !category.isEmpty || !severity.isEmpty}
+  // Only what takes space on the device (hides items only in iCloud).
+  public var onDeviceOnly = false
+  public init(query: String = "", category: String = "", severity: String = "", onDeviceOnly: Bool = false) {
+    self.query = query; self.category = category; self.severity = severity; self.onDeviceOnly = onDeviceOnly
+  }
+  public var isActive: Bool {!query.isEmpty || !category.isEmpty || !severity.isEmpty || onDeviceOnly}
 }
 
 public enum Sort: String, CaseIterable, Sendable {
@@ -141,6 +147,7 @@ public enum Selection {
     let needle = filters.query.lowercased()
     return findings.enumerated().compactMap {index, f in
       guard filters.category.isEmpty || f.category == filters.category, filters.severity.isEmpty || f.severity.rawValue == filters.severity,
+            !filters.onDeviceOnly || f.onDevice,
             needle.isEmpty || "\(f.name) \(f.location)".lowercased().contains(needle) else {return nil}
       return Indexed(index: index, finding: f)
     }
@@ -241,7 +248,6 @@ public enum Tour {
     ] : [
       TourStep([.quick], "\"Selecionar tudo\" pega só o que está nos filtros. O resto é com você: foto é sua, você escolhe."),
       TourStep([.clean], "Escolheu? Manda pra Apagados. O iPhone pede confirmação, e dá pra recuperar nos apps Fotos e Arquivos."),
-      TourStep([.auto], "Com pressa? A limpeza automática leva só cópias idênticas e extras de rajadas. Sempre sobra uma de cada."),
     ]
     steps += [
       TourStep([.mascot], "E aqui é o meu cantinho. Quando a gente terminar eu volto pra cá, fico dando dicas e aceito carinho."),

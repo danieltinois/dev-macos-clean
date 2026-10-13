@@ -29,7 +29,7 @@ struct PhotoReviewCard: View {
               }
               VStack(alignment: .leading, spacing: 3) {
                 Text(set.name).font(Theme.sans(12, .medium)).foregroundStyle(Color(hex: 0xd4d9e0))
-                Text("\(set.items.count) · \(Labels.bytes(set.bytes))").font(Theme.mono(10)).foregroundStyle(Theme.muted)
+                Text("\(set.items.count) · \(Labels.bytes(set.bytes))\(set.cloudBytes > 0 ? " · ☁ \(Labels.bytes(set.cloudBytes))" : "")").font(Theme.mono(10)).foregroundStyle(Theme.muted)
               }
               Spacer(minLength: 0)
               Text("›").foregroundStyle(Color(hex: 0x747d89))
@@ -202,6 +202,13 @@ struct PhotoReviewView: View {
         }
         .frame(width: 22, height: 22).padding(6)
       }
+      .overlay(alignment: .topLeading) {
+        if !item.finding.onDevice {
+          Image(systemName: "icloud.fill").font(.system(size: 11)).foregroundStyle(.white)
+            .padding(4).background(.black.opacity(0.55), in: Circle()).padding(6)
+            .accessibilityLabel("só no iCloud")
+        }
+      }
       .overlay(alignment: .bottomLeading) {
         Text(Labels.bytes(item.finding.sizeBytes)).font(Theme.mono(9, .semibold)).foregroundStyle(.white)
           .padding(.horizontal, 4).padding(.vertical, 2)
@@ -253,7 +260,7 @@ private struct QuickReview: View {
         }
         VStack(spacing: 2) {
           Text(item.finding.location).font(Theme.mono(11)).foregroundStyle(Color(hex: 0xd4d9e0)).lineLimit(1)
-          Text("\(Labels.bytes(item.finding.sizeBytes))\(item.finding.modifiedDate.map {" · \(Labels.dateTime($0))"} ?? "")").font(Theme.mono(10)).foregroundStyle(Theme.muted)
+          Text("\(item.finding.onDevice ? "" : "☁ só no iCloud · ")\(Labels.bytes(item.finding.sizeBytes))\(item.finding.modifiedDate.map {" · \(Labels.dateTime($0))"} ?? "")").font(Theme.mono(10)).foregroundStyle(Theme.muted)
         }
         HStack(spacing: 10) {
           Button("✕ Apagar") {decide(delete: true)}.devButton(fontSize: 14, minHeight: 48, fill: true)

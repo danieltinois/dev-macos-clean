@@ -35,7 +35,8 @@ struct StatsCard: View {
     let total = model.report?.totals.bytes ?? 0, safe = model.safeBytes, review = total - safe
     VStack(spacing: 0) {
       article(title: "IDENTIFICADO", dot: nil, value: total, big: !metrics.compact,
-              bar: [(barBlocks(safe, of: total, width: 30), Theme.accent), (barBlocks(review, of: total, width: 30), Theme.amber)], duration: 0.8, note: model.count)
+              bar: [(barBlocks(safe, of: total, width: 30), Theme.accent), (barBlocks(review, of: total, width: 30), Theme.amber)], duration: 0.8,
+              note: model.cloudBytes > 0 ? "\(model.count)\nNo iPhone: \(Labels.bytes(model.onDeviceBytes)) · ☁ só no iCloud: \(Labels.bytes(model.cloudBytes))" : model.count)
       divider
       article(title: "LIMPEZA SEGURA", dot: Theme.accent, value: safe, big: false,
               bar: [(barBlocks(safe, of: total, width: 30), Theme.accent)], duration: 0.65, note: model.platform.safeNote)
@@ -78,7 +79,8 @@ struct DiskCard: View {
 
   var body: some View {
     if let report = model.report, let storage = report.storage {
-      let d = DiskParts(storage, found: report.totals.bytes), platform = model.platform
+      // Only what is on the device comes back as free space.
+      let d = DiskParts(storage, found: model.onDeviceBytes), platform = model.platform
       let percent = d.total > 0 ? Int((Double(d.free) / Double(d.total) * 100).rounded()) : 0
       VStack(alignment: .leading, spacing: 0) {
         HStack(alignment: .firstTextBaseline, spacing: 12) {

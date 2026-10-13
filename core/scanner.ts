@@ -118,8 +118,15 @@ function keeperOf(keeper: PhotoAsset | undefined): Record<string, string> {
   return keeper ? {'Fica': keeper.name, keeper: PHOTO_PREFIX + keeper.id} : {};
 }
 
-// Where the original is, for the details dialog (items only in iCloud never get here).
+// Items only in iCloud are listed too (deleting them frees iCloud, which people
+// pay for), marked `on_device: no` so the app can badge, count and filter them.
+export const ONLY_IN_ICLOUD = 'Só no iCloud. O iPhone guarda só uma versão leve, então apagar libera espaço no iCloud, quase nada no iPhone.';
+const ONLY_IN_ICLOUD_DRIVE = 'Só no iCloud Drive, sem cópia no iPhone. Apagar libera espaço no iCloud, não no iPhone.';
+const inCloudOnly = (text: string) => ({'Onde está': text, on_device: 'no'});
+
+// Where the original is, for the details dialog.
 function storedAt({local, cloud}: PhotoAsset): string | null {
+  if (local === false) return ONLY_IN_ICLOUD;
   if (local && cloud) return 'No iPhone e no iCloud. Para tirar do iPhone sem apagar, ligue Ajustes › Fotos › Otimizar Armazenamento do iPhone.';
   if (local && cloud === false) return 'Só no iPhone, sem cópia no iCloud. Apagar remove a única cópia.';
   return null;
@@ -148,6 +155,7 @@ export function fileMatches(match: FileMatch, item: FileItem, now: number, extra
 }
 
 function fileStoredAt({local, cloud}: FileItem): string | null {
+  if (local === false) return ONLY_IN_ICLOUD_DRIVE;
   if (local && cloud) return 'No iPhone e no iCloud Drive. Para tirar do iPhone sem apagar, toque e segure o arquivo no app Arquivos e escolha Remover Download.';
   if (local && cloud === false) return 'Só no iPhone, sem cópia no iCloud. Apagar remove a única cópia.';
   return null;
@@ -223,15 +231,12 @@ export function scan(host: Host, rules: Rule[], options: Partial<ScanOptions> = 
   }
 
   // 3. Photo library items, on hosts that list them. The first matching rule wins.
-  // Items only in iCloud take no space on the device, so they never become findings;
-  // they still count as the original when looking for copies.
   const photoRules = opts.sources.includes('photos') && host.photos ? selected.filter(rule => rule.photos) : [];
   if (photoRules.length && !full()) {
     let assets: PhotoAsset[] = [];
     try {assets = host.photos!();} catch (error) {warnings.push(`cannot read photos: ${(error as Error).message}`);}
     const now = opts.now ?? Date.now(), extras = duplicateExtras(assets), similar = similarExtras(assets);
     for (const asset of assets) {
-      if (asset.local === false) continue;
       const rule = photoRules.find(rule => photoMatches(rule.photos!, asset, now, extras, similar));
       if (!rule) continue;
       if (full()) {stopped(); break;}
@@ -241,20 +246,18 @@ export function scan(host: Host, rules: Rule[], options: Partial<ScanOptions> = 
         reclaimable: rule.reclaimable, description: rule.description, path: PHOTO_PREFIX + asset.id,
         size_bytes: asset.bytes ?? 0, size_complete: asset.bytes !== null,
         last_modified: new Date(asset.created_ms).toISOString(), rebuild: rule.rebuild,
-        metadata: {label: asset.name, ...stored ? {'Onde está': stored} : {}, ...keeperOf(rule.photos!.similar ? similar.get(asset.id) : rule.photos!.duplicate ? extras.get(asset.id) : undefined)},
+        metadata: {label: asset.name, ...stored ? {'Onde está': stored} : {}, ...asset.local === false ? {on_device: 'no'} : {}, ...keeperOf(rule.photos!.similar ? similar.get(asset.id) : rule.photos!.duplicate ? extras.get(asset.id) : undefined)},
       });
     }
   }
 
-  // 4. Files in the folders the user picked, on hosts that list them. Like photos,
-  // files only in iCloud Drive take no space on the device and are skipped.
+  // 4. Files in the folders the user picked, on hosts that list them.
   const fileRules = opts.sources.includes('files') && host.files ? selected.filter(rule => rule.files) : [];
   if (fileRules.length && !full()) {
     let items: FileItem[] = [];
     try {items = host.files!();} catch (error) {warnings.push(`cannot read picked folders: ${(error as Error).message}`);}
     const now = opts.now ?? Date.now(), extras = duplicateFileExtras(items);
     for (const item of items) {
-      if (item.local === false) continue;
       const rule = fileRules.find(rule => fileMatches(rule.files!, item, now, extras));
       if (!rule) continue;
       if (full()) {stopped(); break;}
@@ -263,7 +266,7 @@ export function scan(host: Host, rules: Rule[], options: Partial<ScanOptions> = 
         rule_id: rule.id, name: rule.name, category: rule.category, severity: analyzer.classify(rule),
         reclaimable: rule.reclaimable, description: rule.description, path: item.path,
         size_bytes: item.bytes, size_complete: true, last_modified: new Date(item.modified_ms).toISOString(), rebuild: rule.rebuild,
-        metadata: {label: item.label, ...stored ? {'Onde está': stored} : {}, ...rule.files!.duplicate && extras.get(item.path) ? {'Fica': extras.get(item.path)!.label} : {}},
+        metadata: {label: item.label, ...stored ? {'Onde está': stored} : {}, ...item.local === false ? {on_device: 'no'} : {}, ...rule.files!.duplicate && extras.get(item.path) ? {'Fica': extras.get(item.path)!.label} : {}},
       });
     }
   }
@@ -280,4 +283,11 @@ export function scan(host: Host, rules: Rule[], options: Partial<ScanOptions> = 
     warnings,
     storage: readStorage(host, home),
   };
+}
+
+// Marks findings at `paths` as only in iCloud, for hosts that check it more
+// precisely after the scan (the iPhone reads the start of each original).
+export function markOnlyInCloud<R extends {findings: Finding[]}>(report: R, paths: string[]): R {
+  const cloud = new Set(paths);
+  return {...report, findings: report.findings.map(f => cloud.has(f.path) && f.path.startsWith(PHOTO_PREFIX) ? {...f, metadata: {...f.metadata, ...inCloudOnly(ONLY_IN_ICLOUD)}} : f)};
 }

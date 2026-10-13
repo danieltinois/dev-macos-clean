@@ -2,8 +2,8 @@
 // Files app with the TypeScript engine, and send confirmed items to Recently
 // Deleted (in Photos or in Files).
 // Cleanup starts only from the user's tap. Files need our confirmation, which
-// defaults to Cancelar; photos get the system's own. Automatic cleanup only takes
-// what the engine marks automatic: byte-identical photo copies and burst extras.
+// defaults to Cancelar; photos get the system's own. Nothing on the iPhone is
+// cleaned automatically.
 #if os(iOS)
 import DevCleanKit
 import QuickLook
@@ -36,9 +36,11 @@ final class PhoneActions: Actions {
       var options = ScanOptions(home: home, sources: ["photos", "files"])
       options.maxFindings = 5000
       var report = try engine.scan(options)
-      // What is only in iCloud takes no space here: drop it, with fresh totals.
+      // What is only in iCloud stays listed (deleting it frees iCloud) but marked,
+      // so the app can badge, count and filter it. The engine only knows what
+      // PhotoKit hinted; this reads the start of each original to be sure.
       let cloud = PhotoLibrary.onlyInCloud(report.findings.map(\.path), progress: progress)
-      if !cloud.isEmpty {report = try engine.remaining(report, moved: Array(cloud))}
+      if !cloud.isEmpty {report = try engine.markOnlyInCloud(report, paths: Array(cloud))}
       // Photo identities in one go: one fetch per item is slow with thousands of findings.
       progress("Conferindo \(report.findings.count) itens…")
       let photos = PhotoLibrary.identities(report.findings.map(\.path))
@@ -65,7 +67,7 @@ final class PhoneActions: Actions {
     try Cleanup.validate(selected, manifest: manifest, identity: Self.identity)
     guard let current = report else {return .canceled}
     let photos = selected.filter {$0.path.hasPrefix(PhotoLibrary.prefix)}, files = selected.filter {!$0.path.hasPrefix(PhotoLibrary.prefix)}
-    if automatic && (!files.isEmpty || photos.contains {$0.autoClean != true}) {throw Cleanup.Failure("Item não autorizado para limpeza automática.")}
+    if automatic {throw Cleanup.Failure("No iPhone nada é limpo automaticamente.")}
     // Files only from the folders the user picked, whatever the report says.
     guard files.allSatisfy({file in picked.contains {file.path.hasPrefix($0.root + "/")}}) else {throw Cleanup.Failure("Item não autorizado para limpeza.")}
     if !files.isEmpty, await !confirm(files, photos: photos.count) {return .canceled}

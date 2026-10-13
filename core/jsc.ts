@@ -38,6 +38,10 @@ const DevCleanEngine = {
   remaining(report: string, moved: string): string {
     return JSON.stringify(engine.policy.withoutMoved(JSON.parse(report), (JSON.parse(moved) as string[]).map(path => ({path}))));
   },
+  // `report` with the findings at `paths` marked as only in iCloud.
+  markOnlyInCloud(report: string, paths: string): string {
+    return JSON.stringify(engine.markOnlyInCloud(JSON.parse(report) as Report, JSON.parse(paths) as string[]));
+  },
   // The ASCII art the app shows, drawn by the same code as the CLI: the logo,
   // the spinner frames and Floco (whole, or the bust for the tutorial). `pose` is JSON.
   banner: () => engine.BANNER,

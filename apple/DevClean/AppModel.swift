@@ -86,6 +86,9 @@ final class AppModel {
   var categories: [String] {report.map {$0.totals.byCategory.keys.sorted()} ?? []}
   private func sum(_ findings: some Sequence<Finding>) -> Int {findings.reduce(0) {$0 + $1.sizeBytes}}
   var safeBytes: Int {sum(report?.findings.filter(\.isSafe) ?? [])}
+  // What cleaning frees on the device, and what only in iCloud (iPhone).
+  var onDeviceBytes: Int {sum(report?.findings.filter(\.onDevice) ?? [])}
+  var cloudBytes: Int {sum(report?.findings.filter {!$0.onDevice} ?? [])}
   var autoBytes: Int {sum(report?.findings.filter {$0.autoClean == true} ?? [])}
   var hasAuto: Bool {report?.findings.contains {$0.autoClean == true} ?? false}
   private var staleShown: [Finding] {shown.map(\.finding).filter {$0.canClean && $0.isStale}}
@@ -263,6 +266,8 @@ final class AppModel {
     let name: String
     let items: [Indexed]
     let bytes: Int
+    // Of `bytes`, what is only in iCloud.
+    let cloudBytes: Int
     var id: String {rule}
     // Copies and similar photos come in groups, each around the photo that stays.
     var grouped: Bool {rule == "duplicate-photos" || rule == "similar-photos"}
@@ -273,12 +278,12 @@ final class AppModel {
 
   var photoSets: [PhotoSet] {
     guard let report else {return []}
-    let photos = report.findings.enumerated().filter {$0.element.path.hasPrefix(Cleanup.photoPrefix) && $0.element.canClean}
+    let photos = report.findings.enumerated().filter {$0.element.path.hasPrefix(Cleanup.photoPrefix) && $0.element.canClean && (!filters.onDeviceOnly || $0.element.onDevice)}
     let byRule = Dictionary(grouping: photos) {$0.element.ruleId}
     return Self.photoOrder.compactMap {rule in
       guard let items = byRule[rule], let first = items.first else {return nil}
       let indexed = items.map {Indexed(index: $0.offset, finding: $0.element)}.sorted {$0.finding.sizeBytes > $1.finding.sizeBytes}
-      return PhotoSet(rule: rule, name: first.element.name, items: indexed, bytes: sum(items.map(\.element)))
+      return PhotoSet(rule: rule, name: first.element.name, items: indexed, bytes: sum(items.map(\.element)), cloudBytes: sum(items.map(\.element).filter {!$0.onDevice}))
     }
   }
 

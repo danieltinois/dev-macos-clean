@@ -49,10 +49,12 @@ test('picked files on the iPhone become findings with a readable label and where
   const report = scan(fileHost(() => files), loadRules(), {home: '/nonexistent', sources: ['files'], now: NOW});
   const byPath = Object.fromEntries(report.findings.map(f => [f.path, f]));
   assert.deepEqual(Object.fromEntries(Object.entries(byPath).map(([p, f]) => [p, f.rule_id])),
-    {'/d/movie.mov': 'large-files', '/d/Downloads/old.pdf': 'old-downloads'});
+    {'/d/movie.mov': 'large-files', '/d/backup.zip': 'installers', '/d/Downloads/old.pdf': 'old-downloads'});
+  assert.equal(byPath['/d/backup.zip']!.metadata.on_device, 'no');
+  assert.match(byPath['/d/backup.zip']!.metadata['Onde está']!, /não no iPhone/);
   assert.equal(byPath['/d/movie.mov']!.metadata.label, 'iCloud Drive › movie.mov');
   assert.match(byPath['/d/movie.mov']!.metadata['Onde está']!, /Remover Download/);
-  assert.deepEqual(report.totals.by_category, {downloads: 1000, files: 2000 * MB});
+  assert.deepEqual(report.totals.by_category, {downloads: 1000, files: 2000 * MB, installers: 500 * MB});
 });
 
 test('picked folders are skipped without the files source, and errors become warnings', () => {

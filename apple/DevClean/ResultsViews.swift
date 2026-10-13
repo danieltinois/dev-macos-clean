@@ -105,9 +105,27 @@ struct FiltersBar: View {
       } else {
         HStack(spacing: 8) {search; category.fixedSize(); severity.fixedSize(); sort.fixedSize()}
       }
+      if model.platform.id == .ios {onDeviceToggle}
     }
     .padding(.horizontal, 14).padding(.bottom, 12)
     .tourTarget(.filters, in: model)
+  }
+
+  // Hides what is only in iCloud, which takes almost no space on the iPhone.
+  private var onDeviceToggle: some View {
+    let on = model.filters.onDeviceOnly
+    return Button {model.filters.onDeviceOnly.toggle()} label: {
+      HStack(spacing: 6) {
+        Image(systemName: on ? "checkmark.square.fill" : "square").foregroundStyle(on ? Theme.accent : Color(hex: 0x828995))
+        Text("Só o que ocupa o iPhone (esconde ☁ só no iCloud)")
+      }
+      .font(Theme.sans(metrics.compact ? 13 : 11)).foregroundStyle(Color(hex: 0xb7bec8))
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .padding(.top, 8)
+    .accessibilityAddTraits(on ? .isSelected : [])
   }
 
   // A `<select>`: the current option and a chevron, opening a menu.
@@ -302,7 +320,7 @@ struct FindingRow: View {
     let age = Labels.ageDays(f)
     return VStack(alignment: .leading, spacing: 0) {
       Text(f.name).font(Theme.sans(12, .medium)).foregroundStyle(Color(hex: 0xd4d9e0)).lineLimit(2)
-      Text(age.map {"\(Labels.ago($0)) · \(f.location)"} ?? f.location)
+      Text("\(f.onDevice ? "" : "☁ ")\(age.map {"\(Labels.ago($0)) · \(f.location)"} ?? f.location)")
         .font(Theme.mono(10)).foregroundStyle(Color(hex: 0x8e97a4)).lineLimit(1).truncationMode(.tail)
         .padding(.top, 6)
       if f.cleanupAllowed != true, let reason = f.cleanupReason, !reason.isEmpty {
