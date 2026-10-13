@@ -34,9 +34,11 @@ test('exact copies are extras, except the oldest of each group', () => {
     copy('first', NOW - 10 * DAY), copy('again', NOW - 2 * DAY), copy('third', NOW),
     copy('other-size', NOW, {bytes: 3_000_001}), copy('video', NOW, {media: 'video', duration_ms: 4000}), copy('unknown', NOW, {bytes: null}),
   ];
-  assert.deepEqual([...duplicateExtras(library)].sort(), ['again', 'third']);
+  assert.deepEqual([...duplicateExtras(library)].map(([id, keeper]) => [id, keeper.id]).sort(), [['again', 'first'], ['third', 'first']]);
   const report = scan(photoHost(() => library), loadRules(), {home: '/nonexistent', sources: ['photos'], now: NOW});
   assert.deepEqual(report.findings.map(f => [f.rule_id, f.path.slice(policy.PHOTO_PREFIX.length)]), [['duplicate-photos', 'again'], ['duplicate-photos', 'third']]);
+  // Each copy says which photo stays, so the app can show them together.
+  assert.deepEqual(report.findings.map(f => [f.metadata['Fica'], f.metadata.keeper]), [['IMG_0001.JPG', `${policy.PHOTO_PREFIX}first`], ['IMG_0001.JPG', `${policy.PHOTO_PREFIX}first`]]);
 });
 
 test('items only in iCloud take no space here and are skipped; the others say where they are', () => {
@@ -59,9 +61,9 @@ test('a copy on the iPhone of an original only in iCloud is still a copy', () =>
 
 test('with content hashes, only identical bytes are copies, and unreadable items never are', () => {
   const copy = (id: string, created_ms: number, digest: string | null | undefined) => asset({id, created_ms, width: 4032, height: 3024, bytes: 3_000_000, digest});
-  assert.deepEqual([...duplicateExtras([copy('a', 1, 'x'), copy('b', 2, 'x'), copy('c', 3, 'y'), copy('d', 4, null), copy('e', 5, null)])], ['b']);
+  assert.deepEqual([...duplicateExtras([copy('a', 1, 'x'), copy('b', 2, 'x'), copy('c', 3, 'y'), copy('d', 4, null), copy('e', 5, null)]).keys()], ['b']);
   // Hosts that don't hash fall back to kind, size and bytes.
-  assert.deepEqual([...duplicateExtras([copy('a', 1, undefined), copy('b', 2, undefined)])], ['b']);
+  assert.deepEqual([...duplicateExtras([copy('a', 1, undefined), copy('b', 2, undefined)]).keys()], ['b']);
 });
 
 test('in a group of similar photos the favorite or the best one stays', () => {

@@ -72,25 +72,27 @@ function ruleFor(host: Host, target: string, patternRules: Rule[]) {
 // duration and bytes. The oldest copy of each group stays out.
 // When the host hashed the content (`digest`), only identical bytes count, and an
 // item it couldn't read (null) is never a copy.
-export function duplicateExtras(assets: PhotoAsset[]): Set<string> {
+export function duplicateExtras(assets: PhotoAsset[]): Map<string, PhotoAsset> {
   const keyed = assets.filter(asset => asset.bytes !== null && asset.width && asset.height && asset.digest !== null)
     .map(asset => [`${asset.media} ${asset.width}x${asset.height} ${asset.duration_ms ?? 0} ${asset.bytes} ${asset.digest ?? ''}`, asset] as const);
   return oldestKept(keyed, asset => asset.created_ms, asset => asset.id);
 }
 
-// Ids of files with the same content (size and SHA-256) as an older file. Files
-// the host didn't hash never count: names alone say nothing about content.
-export function duplicateFileExtras(items: FileItem[]): Set<string> {
+// Files with the same content (size and SHA-256) as an older file, by path, each
+// with the file that stays. Files the host didn't hash never count: names alone
+// say nothing about content.
+export function duplicateFileExtras(items: FileItem[]): Map<string, FileItem> {
   return oldestKept(items.filter(item => item.digest).map(item => [`${item.bytes} ${item.digest}`, item] as const), item => item.modified_ms, item => item.path);
 }
 
-// In each group of equal keys, every item but the oldest.
-function oldestKept<T>(keyed: (readonly [string, T])[], time: (item: T) => number, id: (item: T) => string): Set<string> {
+// In each group of equal keys, every item but the oldest, with the oldest (which stays).
+function oldestKept<T>(keyed: (readonly [string, T])[], time: (item: T) => number, id: (item: T) => string): Map<string, T> {
   const groups = new Map<string, T[]>();
   for (const [key, item] of keyed) groups.set(key, [...groups.get(key) ?? [], item]);
-  const extras = new Set<string>();
+  const extras = new Map<string, T>();
   for (const group of groups.values()) {
-    group.sort((a, b) => time(a) - time(b) || compare(id(a), id(b))).slice(1).forEach(item => extras.add(id(item)));
+    const [keeper, ...rest] = group.sort((a, b) => time(a) - time(b) || compare(id(a), id(b)));
+    for (const item of rest) extras.set(id(item), keeper!);
   }
   return extras;
 }
@@ -110,6 +112,12 @@ export function similarExtras(assets: PhotoAsset[]): Map<string, PhotoAsset> {
   return extras;
 }
 
+// The photo that stays for a copy or a similar photo: its name ('Fica', shown in
+// the details) and its path (`keeper`, so the app can show the group together).
+function keeperOf(keeper: PhotoAsset | undefined): Record<string, string> {
+  return keeper ? {'Fica': keeper.name, keeper: PHOTO_PREFIX + keeper.id} : {};
+}
+
 // Where the original is, for the details dialog (items only in iCloud never get here).
 function storedAt({local, cloud}: PhotoAsset): string | null {
   if (local && cloud) return 'No iPhone e no iCloud. Para tirar do iPhone sem apagar, ligue Ajustes › Fotos › Otimizar Armazenamento do iPhone.';
@@ -119,7 +127,7 @@ function storedAt({local, cloud}: PhotoAsset): string | null {
 
 // Whether a photo library item meets every criterion of `match`. `extras` and
 // `similar` come from duplicateExtras() and similarExtras().
-export function photoMatches(match: PhotoMatch, asset: PhotoAsset, now: number, extras: Set<string> = new Set(), similar: Map<string, PhotoAsset> = new Map()): boolean {
+export function photoMatches(match: PhotoMatch, asset: PhotoAsset, now: number, extras: Map<string, PhotoAsset> = new Map(), similar: Map<string, PhotoAsset> = new Map()): boolean {
   return (!match.media || asset.media === match.media) &&
     (!match.subtype || asset.subtypes.includes(match.subtype)) &&
     (!match.burst || asset.burst === match.burst) &&
@@ -130,7 +138,7 @@ export function photoMatches(match: PhotoMatch, asset: PhotoAsset, now: number, 
 }
 
 // Whether a file from a picked folder meets every criterion of `match`. `extras` comes from duplicateFileExtras().
-export function fileMatches(match: FileMatch, item: FileItem, now: number, extras: Set<string> = new Set()): boolean {
+export function fileMatches(match: FileMatch, item: FileItem, now: number, extras: Map<string, FileItem> = new Map()): boolean {
   const folders = path.dirname(item.path).split('/'), name = path.basename(item.path), dot = name.lastIndexOf('.');
   return (!match.folders || match.folders.some(folder => folders.includes(folder))) &&
     (!match.extensions || (dot > 0 && match.extensions.includes(name.slice(dot + 1).toLowerCase()))) &&
@@ -233,7 +241,7 @@ export function scan(host: Host, rules: Rule[], options: Partial<ScanOptions> = 
         reclaimable: rule.reclaimable, description: rule.description, path: PHOTO_PREFIX + asset.id,
         size_bytes: asset.bytes ?? 0, size_complete: asset.bytes !== null,
         last_modified: new Date(asset.created_ms).toISOString(), rebuild: rule.rebuild,
-        metadata: {label: asset.name, ...stored ? {'Onde está': stored} : {}, ...rule.photos!.similar ? {'Fica': similar.get(asset.id)!.name} : {}},
+        metadata: {label: asset.name, ...stored ? {'Onde está': stored} : {}, ...keeperOf(rule.photos!.similar ? similar.get(asset.id) : rule.photos!.duplicate ? extras.get(asset.id) : undefined)},
       });
     }
   }
@@ -255,7 +263,7 @@ export function scan(host: Host, rules: Rule[], options: Partial<ScanOptions> = 
         rule_id: rule.id, name: rule.name, category: rule.category, severity: analyzer.classify(rule),
         reclaimable: rule.reclaimable, description: rule.description, path: item.path,
         size_bytes: item.bytes, size_complete: true, last_modified: new Date(item.modified_ms).toISOString(), rebuild: rule.rebuild,
-        metadata: {label: item.label, ...stored ? {'Onde está': stored} : {}},
+        metadata: {label: item.label, ...stored ? {'Onde está': stored} : {}, ...rule.files!.duplicate && extras.get(item.path) ? {'Fica': extras.get(item.path)!.label} : {}},
       });
     }
   }

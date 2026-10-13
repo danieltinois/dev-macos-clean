@@ -54,7 +54,8 @@ struct DetailsOverlay: View {
               .padding(12).background(Theme.titlebar).overlay(Rectangle().strokeBorder(Theme.line, lineWidth: 1))
           }
           section("Limpeza", cleanupText(f))
-          ForEach(f.metadata.keys.sorted().filter {$0 != "label"}, id: \.self) {section($0, f.metadata[$0] ?? "")}
+          // `label` is shown as the path and `keeper` is for grouping; the rest are notes.
+          ForEach(f.metadata.keys.sorted().filter {$0 != "label" && $0 != "keeper"}, id: \.self) {section($0, f.metadata[$0] ?? "")}
         }
         .padding(.vertical, 20)
         Button(model.platform.reveal) {Task {await model.reveal()}}

@@ -368,6 +368,13 @@ Trash, and TypeScript decides what each item is and what may be cleaned.
   where they stay for 30 days. With limited photo access, the app only
   sees the photos you allowed. **Abrir para conferir** (open to check) in the
   details opens the item in Quick Look.
+  **Revisar fotos** (review photos) lists each set (copies, burst extras, similar
+  photos, big videos, screenshots…) and opens it full screen: a grid of
+  thumbnails, with copies and similar photos grouped around the one that stays,
+  or a quick mode that shows one photo at a time (swipe left to delete, right to
+  keep). Whatever is picked goes in one go. Since iOS has no public flag for it,
+  the app checks that each item's original is really on the iPhone by reading the
+  start of it with downloads off; what is only in iCloud is left out.
   With **+ Pasta do Arquivos** (add a Files folder) you pick one or more folders
   from the Files app; picking **On My iPhone** and **iCloud Drive** covers
   everything iOS lets an app see, including the folders other apps share there.

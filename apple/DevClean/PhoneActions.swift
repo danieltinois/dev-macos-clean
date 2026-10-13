@@ -35,7 +35,10 @@ final class PhoneActions: Actions {
       let engine = try Engine.bundled(host: NativeHost(home: home, photos: {try PhotoLibrary.assets(progress: progress)}, files: {PickedFolders.items(in: folders, progress: progress)}))
       var options = ScanOptions(home: home, sources: ["photos", "files"])
       options.maxFindings = 5000
-      let report = try engine.scan(options)
+      var report = try engine.scan(options)
+      // What is only in iCloud takes no space here: drop it, with fresh totals.
+      let cloud = PhotoLibrary.onlyInCloud(report.findings.map(\.path), progress: progress)
+      if !cloud.isEmpty {report = try engine.remaining(report, moved: Array(cloud))}
       // Photo identities in one go: one fetch per item is slow with thousands of findings.
       progress("Conferindo \(report.findings.count) itens…")
       let photos = PhotoLibrary.identities(report.findings.map(\.path))

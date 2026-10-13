@@ -226,6 +226,73 @@ public enum PhotoLibrary {
 
   private static func identityString(_ asset: PHAsset) -> String {"\(asset.localIdentifier):\(asset.modificationDate?.timeIntervalSince1970 ?? 0)"}
 
+  // Items whose original is only in iCloud, among `paths`. iOS has no public flag
+  // for it, so this asks for the original's data with downloads off and stops at
+  // the first chunk: data means it is on the iPhone; "network required" means only
+  // in iCloud. Anything unclear counts as on the iPhone.
+  public static func onlyInCloud(_ paths: [String], progress: @Sendable (String) -> Void = {_ in}) -> Set<String> {
+    let ids = paths.compactMap {$0.hasPrefix(prefix) ? String($0.dropFirst(prefix.count)) : nil}
+    var assets: [String: PHAsset] = [:]
+    for start in stride(from: 0, to: ids.count, by: 500) {
+      autoreleasepool {
+        PHAsset.fetchAssets(withLocalIdentifiers: Array(ids[start..<min(start + 500, ids.count)]), options: nil).enumerateObjects {asset, _, _ in assets[asset.localIdentifier] = asset}
+      }
+    }
+    var cloud = Set<String>()
+    for (done, id) in ids.enumerated() {
+      if done % 25 == 0 {progress("Conferindo o que está no iPhone… \(done) de \(ids.count)")}
+      if let asset = assets[id], autoreleasepool(invoking: {needsDownload(asset)}) {cloud.insert(prefix + id)}
+    }
+    return cloud
+  }
+
+  private static func needsDownload(_ asset: PHAsset) -> Bool {
+    let resources = PHAssetResource.assetResources(for: asset)
+    guard let main = resources.first(where: {[.photo, .video].contains($0.type)}) ?? resources.first else {return false}
+    let options = PHAssetResourceRequestOptions()
+    options.isNetworkAccessAllowed = false
+    let probe = Probe(), done = DispatchSemaphore(value: 0)
+    let manager = PHAssetResourceManager.default()
+    probe.request = manager.requestData(for: main, options: options) {_ in
+      // One chunk is enough: the original is here.
+      if !probe.gotData {probe.gotData = true; manager.cancelDataRequest(probe.request)}
+    } completionHandler: {error in
+      probe.cloud = !probe.gotData && (error as? PHPhotosError)?.code == .networkAccessRequired
+      done.signal()
+    }
+    _ = done.wait(timeout: .now() + 10)
+    return probe.cloud
+  }
+
+  private final class Probe: @unchecked Sendable {
+    var request: PHAssetResourceDataRequestID = 0
+    var gotData = false
+    var cloud = false
+  }
+
+  // A thumbnail or a screen-sized image of the item for the review screens,
+  // downloading from iCloud if needed (the photo that stays may live there).
+  @MainActor public static func image(_ path: String, side: CGFloat, fill: Bool) async -> UIImage? {
+    guard path.hasPrefix(prefix), let asset = PHAsset.fetchAssets(withLocalIdentifiers: [String(path.dropFirst(prefix.count))], options: nil).firstObject else {return nil}
+    let options = PHImageRequestOptions()
+    options.deliveryMode = .highQualityFormat
+    options.resizeMode = .fast
+    options.isNetworkAccessAllowed = true
+    return await withCheckedContinuation {continuation in
+      imageManager.requestImage(for: asset, targetSize: CGSize(width: side, height: side), contentMode: fill ? .aspectFill : .aspectFit, options: options) {image, _ in
+        continuation.resume(returning: image)
+      }
+    }
+  }
+
+  // Video length in seconds, or nil for photos.
+  @MainActor public static func duration(_ path: String) -> Double? {
+    guard path.hasPrefix(prefix), let asset = PHAsset.fetchAssets(withLocalIdentifiers: [String(path.dropFirst(prefix.count))], options: nil).firstObject, asset.mediaType == .video else {return nil}
+    return asset.duration
+  }
+
+  @MainActor private static let imageManager = PHCachingImageManager()
+
   // A local file to preview the item with, downloading it from iCloud if needed.
   // Videos come as the library's own file; photos are copied to a temporary file
   // (`temporary`), which the caller removes after the preview.
