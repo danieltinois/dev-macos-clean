@@ -3,7 +3,8 @@ import {afterEach, test} from 'bun:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import {loadRules, RuleError} from './rules';
+import {loadRules} from './node';
+import {RuleError} from './rules';
 import {removeTempDirs, tempDir} from './test-support';
 
 afterEach(removeTempDirs);

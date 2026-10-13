@@ -1,11 +1,9 @@
-// Load and validate declarative rules from JSON files (one rule per file).
+// Validate declarative rules parsed from JSON files (one rule per file).
 // Everything that can be checked statically (ids, severity, required fields,
 // unknown keys) is enforced here, so a typo never reaches the scanner.
-import fs from 'node:fs';
-import path from 'node:path';
+// Reading the files is the caller's job (loadRules in node.ts).
 import type {Rule, Severity} from './types';
 
-export const DEFAULT_RULES_DIR = path.resolve(import.meta.dirname, '..', 'rules');
 export const SEVERITIES: readonly Severity[] = ['SAFE', 'REVIEW', 'DANGER'];
 const SLUG = /^[a-z0-9][a-z0-9-]*$/;
 const RULE_KEYS = new Set(['id', 'name', 'category', 'severity', 'reclaimable', 'description', 'paths', 'patterns', 'markers', 'rebuild']);
@@ -50,18 +48,16 @@ export function validateRule(data: unknown): Rule {
   return {...(data as Omit<Rule, 'paths' | 'patterns' | 'markers' | 'rebuild'>), paths, patterns, markers, rebuild};
 }
 
-// Load every `*.json` in `directory` (default: the project's rules/) as one rule each.
-export function loadRules(directory = DEFAULT_RULES_DIR): Rule[] {
-  let files: string[];
-  try {files = fs.readdirSync(directory).filter(name => name.endsWith('.json')).sort();} catch {
-    throw new RuleError(`rules directory not found: ${directory}`);
-  }
-  const rules = files.map(file => {
+export interface RuleFile {name: string; text: string}
+
+// Parse `files` (only `*.json` names are used, in name order) as one rule each.
+export function parseRules(files: RuleFile[]): Rule[] {
+  const rules = files.filter(file => file.name.endsWith('.json')).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0).map(({name, text}) => {
     let data: unknown;
-    try {data = JSON.parse(fs.readFileSync(path.join(directory, file), 'utf8'));} catch (error) {
-      throw new RuleError(`${file}: invalid JSON: ${(error as Error).message}`);
+    try {data = JSON.parse(text);} catch (error) {
+      throw new RuleError(`${name}: invalid JSON: ${(error as Error).message}`);
     }
-    try {return validateRule(data);} catch (error) {throw new RuleError(`${file}: invalid rule: ${(error as Error).message}`);}
+    try {return validateRule(data);} catch (error) {throw new RuleError(`${name}: invalid rule: ${(error as Error).message}`);}
   });
   const ids = rules.map(rule => rule.id);
   const dupes = [...new Set(ids.filter((id, index) => ids.indexOf(id) !== index))].sort();

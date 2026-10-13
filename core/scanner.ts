@@ -1,12 +1,12 @@
 // Scan orchestration: discovery -> measurement -> classification -> aggregation.
 //
 // Explicit rule paths are probed first (cheap, most specific). Pattern rules
-// then drive one bounded walk over the scan roots. Nothing here ever deletes.
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
+// then drive one bounded walk over the scan roots. Nothing here ever deletes,
+// and all disk access goes through the Host.
+import * as path from './paths';
 import * as filesystem from './filesystem';
 import * as analyzer from './analyzer';
+import type {Host} from './host';
 import type {Finding, Report, Rule} from './types';
 
 export interface ScanOptions {
@@ -30,10 +30,10 @@ export const DEFAULTS: ScanOptions = {roots: [], categories: null, excludes: [],
 function compare(a: string, b: string) {return a < b ? -1 : a > b ? 1 : 0;}
 
 // Other users' homes, for a global scan.
-function otherHomes(usersDir: string, home: string, warnings: string[]) {
+function otherHomes(host: Host, usersDir: string, home: string, warnings: string[]) {
   try {
-    return fs.readdirSync(usersDir, {withFileTypes: true})
-      .filter(entry => entry.isDirectory() && !entry.isSymbolicLink())
+    return host.readdir(usersDir)
+      .filter(entry => entry.kind === 'dir')
       .map(entry => path.join(usersDir, entry.name))
       .filter(dir => dir !== home)
       .sort();
@@ -43,25 +43,25 @@ function otherHomes(usersDir: string, home: string, warnings: string[]) {
   }
 }
 
-function explicitTargets(rule: Rule, home: string, log: ScanOptions['log']) {
+function explicitTargets(host: Host, rule: Rule, home: string, log: ScanOptions['log']) {
   const targets: string[] = [];
   for (const entry of rule.paths) {
-    const expanded = filesystem.expandPath(entry, home);
-    if (filesystem.hasGlobMagic(entry)) targets.push(...filesystem.glob(expanded));
-    else if (filesystem.lexists(expanded)) targets.push(expanded);
+    const expanded = filesystem.expandPath(entry, home, name => host.env(name));
+    if (filesystem.hasGlobMagic(entry)) targets.push(...filesystem.glob(host, expanded));
+    else if (filesystem.lexists(host, expanded)) targets.push(expanded);
     else log(`rule ${rule.id}: path not found: ${expanded}`);
   }
   return targets;
 }
 
-function ruleFor(target: string, patternRules: Rule[]) {
+function ruleFor(host: Host, target: string, patternRules: Rule[]) {
   return patternRules.find(rule =>
     rule.patterns.some(pattern => filesystem.rulePatternMatches(target, pattern)) &&
-    (!rule.markers.length || rule.markers.some(marker => filesystem.isFile(path.join(path.dirname(target), marker)))));
+    (!rule.markers.length || rule.markers.some(marker => filesystem.isFile(host, path.join(path.dirname(target), marker)))));
 }
 
-// Run a scan with `options` (see DEFAULTS) over `rules` and return the report (schema_version 1).
-export function scan(rules: Rule[], options: Partial<ScanOptions> = {}): Report {
+// Run a scan on `host` with `options` (see DEFAULTS) over `rules` and return the report (schema_version 1).
+export function scan(host: Host, rules: Rule[], options: Partial<ScanOptions> = {}): Report {
   const opts: ScanOptions = {...DEFAULTS, ...Object.fromEntries(Object.entries(options).filter(([, value]) => value !== undefined))};
   const warnings: string[] = [];
   const categories = opts.categories?.length ? new Set(opts.categories) : null;
@@ -70,11 +70,12 @@ export function scan(rules: Rule[], options: Partial<ScanOptions> = {}): Report 
     .sort((a, b) => Number(a.id === 'user-app-caches') - Number(b.id === 'user-app-caches'));
   if (!selected.length) warnings.push('no rules match the requested categories; nothing to scan');
 
-  const home = path.resolve(opts.home ?? os.homedir());
-  const homes = [home, ...(opts.globalScan ? otherHomes(opts.usersDir, home, warnings) : [])];
-  const roots = [...new Set([...homes, ...opts.roots.map(root => path.resolve(root)), ...(opts.globalScan ? ['/'] : [])])];
+  const cwd = host.cwd();
+  const home = path.resolve(cwd, opts.home ?? host.home());
+  const homes = [home, ...(opts.globalScan ? otherHomes(host, opts.usersDir, home, warnings) : [])];
+  const roots = [...new Set([...homes, ...opts.roots.map(root => path.resolve(cwd, root)), ...(opts.globalScan ? ['/'] : [])])];
   const scanRoots = roots.filter(root => {
-    if (filesystem.isDir(root)) return true;
+    if (filesystem.isDir(host, root)) return true;
     warnings.push(`scan root does not exist or is not a directory: ${root}`);
     return false;
   });
@@ -85,17 +86,16 @@ export function scan(rules: Rule[], options: Partial<ScanOptions> = {}): Report 
   const full = () => findings.length >= opts.maxFindings;
   function add(target: string, rule: Rule) {
     if (filesystem.excluded(target, opts.excludes)) return opts.log(`excluding ${target}`);
-    let key: string;
-    try {key = fs.realpathSync(target);} catch {key = path.resolve(target);}
+    const key = host.realpath(target) ?? path.resolve(cwd, target);
     if (seen.has(key)) return opts.log(`duplicate target ${target} (kept rule ${seen.get(key)})`);
-    const measured = filesystem.measure(target, {maxEntries: opts.maxEntries});
+    const measured = filesystem.measure(host, target, {maxEntries: opts.maxEntries});
     if (measured.errors) warnings.push(`errors while measuring ${target} (${measured.errors} error(s))`);
     seen.set(key, rule.id);
     findings.push({
       rule_id: rule.id, name: rule.name, category: rule.category, severity: analyzer.classify(rule),
       reclaimable: rule.reclaimable, description: rule.description, path: target,
       size_bytes: measured.bytes, size_complete: !measured.truncated && !measured.errors,
-      last_modified: filesystem.mtime(target), rebuild: rule.rebuild, metadata: {},
+      last_modified: filesystem.mtime(host, target), rebuild: rule.rebuild, metadata: {},
     });
   }
 
@@ -103,7 +103,7 @@ export function scan(rules: Rule[], options: Partial<ScanOptions> = {}): Report 
   explicit: for (const rule of selected) {
     if (full()) break;
     for (const userHome of homes) {
-      for (const target of explicitTargets(rule, userHome, opts.log)) {
+      for (const target of explicitTargets(host, rule, userHome, opts.log)) {
         add(target, rule);
         if (full()) {warnings.push(`reached max findings (${opts.maxFindings}); scan stopped early`); break explicit;}
       }
@@ -114,14 +114,14 @@ export function scan(rules: Rule[], options: Partial<ScanOptions> = {}): Report 
   const patternRules = selected.filter(rule => rule.patterns.length);
   if (patternRules.length && !full()) {
     const patterns = [...new Set(patternRules.flatMap(rule => rule.patterns))].sort();
-    for (const target of filesystem.iterMatches(scanRoots, patterns, {maxDepth: opts.maxDepth, maxDirs: opts.maxDirs, excludes: scanExcludes, warnings})) {
+    for (const target of filesystem.iterMatches(host, scanRoots, patterns, {maxDepth: opts.maxDepth, maxDirs: opts.maxDirs, excludes: scanExcludes, warnings})) {
       if (full()) {warnings.push(`reached max findings (${opts.maxFindings}); scan stopped early`); break;}
-      const rule = ruleFor(target, patternRules);
+      const rule = ruleFor(host, target, patternRules);
       if (rule) add(target, rule);
     }
   }
 
-  findings.forEach(analyzer.enrich);
+  for (const finding of findings) analyzer.enrich(host, finding);
   findings.sort((a, b) => compare(a.category, b.category) || compare(a.name, b.name) || compare(a.path, b.path));
   return {
     schema_version: SCHEMA_VERSION,

@@ -63,12 +63,17 @@ dev-macos-clean/
 │   ├── node-modules.json
 │   ├── xcode-derived-data.json
 │   └── ...
-├── core/                   # domain logic: no UI, never deletes anything
-│   ├── index.ts            # public API: loadRules, scan, formatBytes, formatAgo
-│   ├── rules.ts            # JSON -> rule loading + strict validation
+├── core/                   # the engine: no UI, never deletes, no disk access of its own
+│   ├── index.ts            # public API on this machine: loadRules, scan, formatBytes, formatAgo
+│   ├── engine.ts           # portable entry point (no Node APIs), for JavaScriptCore
+│   ├── host.ts             # Host: the disk operations the engine asks for
+│   ├── node.ts             # the Node host (fs) used by the CLI, Electron and tests
+│   ├── paths.ts            # POSIX path helpers (node:path semantics)
+│   ├── rules.ts            # JSON -> rules + strict validation
 │   ├── filesystem.ts       # dirSize, bounded walk, glob/fnmatch, excludes, symlink safety
 │   ├── scanner.ts          # discovery -> measurement -> classification -> report
 │   ├── analyzer.ts         # per-rule enrichers + totals
+│   ├── policy.ts           # cleanup policy: allowlist, review, automatic cleanup
 │   ├── format.ts           # human formatting (bytes, relative time)
 │   ├── types.ts            # Rule, Finding and Report types (the JSON contract)
 │   ├── test-support.ts     # temp trees for tests
@@ -80,7 +85,7 @@ dev-macos-clean/
     ├── main.ts             # main process: window, IPC handlers, confirmation dialogs
     ├── scan.ts             # runs core/ in a worker thread (main process never blocks)
     ├── scan-worker.ts      # worker entry: loads rules, scans, posts the report
-    ├── cleanup.ts          # cleanup policy: allowlist, identity checks, move to Trash
+    ├── cleanup.ts          # applies core/policy.ts: identity checks, tokens, move to Trash
     ├── preload.ts          # minimal bridge exposed to the page
     ├── index.html, renderer.ts, style.css   # sandboxed UI, no Node access
     └── *.test.ts
@@ -99,12 +104,12 @@ How a scan flows through the app:
    `core.scan(core.loadRules(rulesDir), {globalScan: true})` and posts the report back
    (5-minute timeout).
 3. `cleanup.prepare()` marks each finding `cleanup_allowed` / `cleanup_review` /
-   `auto_clean` against its own allowlist and records the identity (inode, mtime)
+   `auto_clean` against the allowlist in `core/policy.ts` and records the identity (inode, mtime)
    of every cleanable path.
 4. On cleanup, the selection is checked again (token, allowlist, identity,
    no symlinks), confirmed in a native dialog, and moved to the Trash.
 
-The scanner (`rules/` + `core/`) decides **what exists**; `desktop/cleanup.ts`
+The scanner (`rules/` + `core/`) decides **what exists**; `core/policy.ts`
 decides **what may be moved**. The two are separate on purpose: a broad or
 mistaken rule can make the scanner show more, but never makes the app delete more.
 
@@ -348,7 +353,7 @@ Sem interface: `bun run scan` (ou `bun run scan --category xcode`).
 | IDEs / outros | Caches JetBrains e Android Studio, Homebrew | Docker (`docker system prune`), caches de apps, logs, Downloads |
 
 Para incluir uma nova ferramenta, adicione um JSON em `rules/` e,
-se a limpeza for de baixo risco, o caminho fixo em `desktop/cleanup.ts`.
+se a limpeza for de baixo risco, o caminho fixo em `core/policy.ts`.
 
 O aplicativo analisa globalmente o disco local: pastas de usuários, projetos e
 caches conhecidos, além de Downloads e logs para revisão. Não há seletor de pasta.

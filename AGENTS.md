@@ -26,24 +26,30 @@ Before finishing a change, run `bun test` and `bun run typecheck`. If you touch
 - `rules/*.json`: one declarative rule per file (`id`, `category`, `severity`,
   `paths` and/or `patterns`, optional `markers` and `rebuild`). `core/rules.ts`
   validates them strictly: unknown keys, bad slugs or duplicate ids fail loading.
-- `core/`: pure domain logic, no Electron, **never deletes**. `scanner.ts`
-  orchestrates, `filesystem.ts` walks and measures, `analyzer.ts` holds
-  per-rule enrichers and totals, `types.ts` defines the report contract.
+- `core/`: the engine. Pure domain logic, no Electron, **never deletes**, and
+  no disk access of its own: everything goes through a `Host` (`host.ts`).
+  `scanner.ts` orchestrates, `filesystem.ts` walks and measures, `analyzer.ts`
+  holds per-rule enrichers and totals, `policy.ts` decides what cleanup may
+  move, `types.ts` defines the report contract, `paths.ts` replaces
+  `node:path`. `engine.ts` is the portable entry point (for JavaScriptCore).
+  `node.ts` is the Node host (`nodeHost`, `loadRules`, `scan`), and `index.ts`
+  is the Node-bound public API used by the CLI and Electron.
 - `cli/devclean.ts`: `devclean scan`, human text or `--json`. Analysis only.
 - `desktop/`: Electron. `main.ts` (IPC and dialogs), `scan.ts` plus
-  `scan-worker.ts` (scan off the main thread), `cleanup.ts` (cleanup policy),
+  `scan-worker.ts` (scan off the main thread), `cleanup.ts` (trusted side of
+  cleanup: identities, tokens, Trash),
   `preload.ts` (the `window.devclean` bridge), `renderer.ts` (sandboxed UI).
 - `scripts/build.ts`: bundles to `dist/` (main, preload and worker as CJS; the
   renderer as a browser script). `dist/` is generated, so don't edit or commit it.
-
 ## Safety invariants (do not weaken)
 
 This tool deletes things on users' machines. Treat these as hard rules:
 
-1. The scanner decides **what exists**, and `desktop/cleanup.ts` decides **what
-   may be moved**. A rule never grants cleanup. Cleanup needs an explicit,
+1. The scanner decides **what exists**, and `core/policy.ts` decides **what may
+   be moved**. A rule never grants cleanup. Cleanup needs an explicit,
    home-relative entry in `targets`/`reviewTargets` (or `projectOutputs` with a
-   marker file) in `cleanup.ts`.
+   marker file) in `policy.ts`. The trusted side of each app
+   (`desktop/cleanup.ts`) applies that policy and does the move.
 2. Cleanup only ever uses `shell.trashItem`. Never add permanent deletion
    (`rm`, `fs.rm`, `unlink`) of user paths, and never empty the Trash.
 3. Before trashing, each target is revalidated against the identity captured at
@@ -65,7 +71,9 @@ This tool deletes things on users' machines. Treat these as hard rules:
   does with `ScanPaths`. `import.meta.dirname` is fine in code that only runs
   from source under Bun (CLI, tests, `core` defaults).
 - Electron runs its own Node, not Bun. Code under `desktop/` (besides tests)
-  must not use `Bun.*` APIs. `core/` is shared, so it uses `node:` modules only.
+  must not use `Bun.*` APIs. `core/` must also run in JavaScriptCore, so it
+  uses no `node:` modules, `process` or `Bun.*` at all, except in `node.ts`
+  and `index.ts`. `core/engine.test.ts` enforces this.
 - The JSON report (`schema_version: 1`) is a stable contract. Key order of
   findings is tested in `cli/devclean.test.ts`. Adding fields is fine;
   renaming or removing them needs a schema bump.
@@ -78,7 +86,7 @@ This tool deletes things on users' machines. Treat these as hard rules:
    existing slug such as `node`, `xcode`, `android`, `rust`, `go`, `python`,
    `ide`, or a new one).
 2. If it's a low-risk regenerable cache, add its fixed home-relative path to
-   `targets` in `desktop/cleanup.ts`. Add it to `automatic` only if the tool
+   `targets` in `core/policy.ts`. Add it to `automatic` only if the tool
    recreates it with no manual step. Add a label in `renderer.ts` `names` for a
    new category.
 3. Cover it in `core/scanner.test.ts` (detection) and, if cleanable,

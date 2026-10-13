@@ -1,12 +1,12 @@
 // End-to-end scanner behavior: discovery, filters, caps, symlinks, permissions, enrichment, totals.
-import {afterEach, spyOn, test} from 'bun:test';
+import {afterEach, test} from 'bun:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import * as filesystem from './filesystem';
 import {buildTotals} from './analyzer';
-import {loadRules, validateRule} from './rules';
-import {scan} from './scanner';
+import {loadRules, nodeHost, scan} from './node';
+import {validateRule} from './rules';
+import * as scanner from './scanner';
 import {buildTree, tempDir, removeTempDirs, block, isRoot} from './test-support';
 import type {Report, Severity} from './types';
 
@@ -172,19 +172,14 @@ test('global scan adds other homes and the disk root', () => {
   const users = tempDir();
   buildTree(users, {'other/Library/Caches/Yarn/x': 7, 'Shared': null});
   fs.symlinkSync(home, path.join(users, 'linked'));
-  const visited: {roots?: string[]; excludes?: string[]} = {};
-  const spy = spyOn(filesystem, 'iterMatches').mockImplementation(function* (roots, _patterns, options) {
-    visited.roots = roots;
-    visited.excludes = options.excludes;
-  });
-  try {
-    const report = scan(RULES, {home, globalScan: true, usersDir: users});
-    assert.deepEqual(visited.roots, [home, path.join(users, 'Shared'), path.join(users, 'other'), '/']);
-    assert.ok(visited.excludes!.includes('/System'));
-    assert.equal(report.options.global_scan, true);
-    assert.ok(report.findings.some(f => f.rule_id === 'yarn-cache' && f.path.startsWith(path.join(users, 'other'))));
-    assert.ok(!counts(report)['user-app-caches']); // known cache rules keep their identity
-  } finally {spy.mockRestore();}
+  // Discovery must not walk the real disk: the host sees `/` as empty.
+  const host = {...nodeHost, readdir: (target: string) => target === '/' ? [] : nodeHost.readdir(target)};
+  const report = scanner.scan(host, RULES, {home, globalScan: true, usersDir: users});
+  assert.deepEqual(report.roots, [home, path.join(users, 'Shared'), path.join(users, 'other'), '/']);
+  assert.ok(report.options.excludes.includes('/System'));
+  assert.equal(report.options.global_scan, true);
+  assert.ok(report.findings.some(f => f.rule_id === 'yarn-cache' && f.path.startsWith(path.join(users, 'other'))));
+  assert.ok(!counts(report)['user-app-caches']); // known cache rules keep their identity
 });
 
 test('markers only match real Cargo projects', () => {

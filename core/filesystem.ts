@@ -7,11 +7,11 @@
 //   matched (so node_modules is never re-entered).
 // * Permission errors are counted and reported, never fatal.
 // * Sizes above a configurable entry cap are reported as truncated.
-import fs from 'node:fs';
-import path from 'node:path';
+// All disk access goes through a Host (see host.ts).
+import * as path from './paths';
+import type {Host, Measurement, SizeOptions} from './host';
 
-export interface Measurement {bytes: number; errors: number; truncated: boolean}
-export interface SizeOptions {maxEntries?: number; maxDepth?: number}
+export type {Measurement, SizeOptions};
 export interface WalkOptions {maxDepth: number; maxDirs: number; excludes?: string[]; warnings?: string[]}
 
 // Directories never descended into during pattern discovery on a home directory.
@@ -46,14 +46,14 @@ export function fnmatch(name: string, pattern: string): boolean {
 export function hasGlobMagic(value: string): boolean {return /[*?[]/.test(value);}
 
 // Expand a leading `~` against `home`, then $VAR / ${VAR} (unknown variables stay as-is).
-export function expandPath(entry: string, home: string): string {
+export function expandPath(entry: string, home: string, env: (name: string) => string | undefined): string {
   if (entry.startsWith('~')) entry = home + entry.slice(1);
-  return path.normalize(entry.replace(/\$(\w+)|\$\{(\w+)\}/g, (match, a?: string, b?: string) => process.env[(a || b)!] ?? match));
+  return path.normalize(entry.replace(/\$(\w+)|\$\{(\w+)\}/g, (match, a?: string, b?: string) => env((a || b)!) ?? match));
 }
 
 // Paths matching a glob, one segment at a time. Like the shell, wildcards
 // never match names starting with `.` unless the segment itself does.
-export function glob(pattern: string): string[] {
+export function glob(host: Host, pattern: string): string[] {
   const parts = pattern.split(path.sep);
   let current = [parts[0] || path.sep];
   for (const part of parts.slice(1)) {
@@ -62,11 +62,11 @@ export function glob(pattern: string): string[] {
     for (const dir of current) {
       if (!hasGlobMagic(part)) {
         const candidate = path.join(dir, part);
-        if (lexists(candidate)) next.push(candidate);
+        if (lexists(host, candidate)) next.push(candidate);
         continue;
       }
       let names: string[];
-      try {names = fs.readdirSync(dir);} catch {continue;}
+      try {names = host.readdir(dir).map(entry => entry.name);} catch {continue;}
       for (const name of names.sort()) {
         if (name.startsWith('.') && !part.startsWith('.')) continue;
         if (fnmatch(name, part)) next.push(path.join(dir, name));
@@ -77,39 +77,34 @@ export function glob(pattern: string): string[] {
   return current;
 }
 
-export function lexists(target: string): boolean {
-  try {fs.lstatSync(target); return true;} catch {return false;}
-}
-
-export function isDir(target: string): boolean {
-  try {return fs.statSync(target).isDirectory();} catch {return false;}
-}
-
-export function isFile(target: string): boolean {
-  try {return fs.statSync(target).isFile();} catch {return false;}
-}
+export function lexists(host: Host, target: string): boolean {return host.lstat(target) !== null;}
+export function isDir(host: Host, target: string): boolean {return host.stat(target)?.kind === 'dir';}
+export function isFile(host: Host, target: string): boolean {return host.stat(target)?.kind === 'file';}
 
 // mtime of the path itself as an ISO string (a proxy for "when was it last used").
-export function mtime(target: string): string | null {
-  try {return fs.lstatSync(target).mtime.toISOString();} catch {return null;}
+export function mtime(host: Host, target: string): string | null {
+  const info = host.lstat(target);
+  return info ? new Date(info.mtimeMs).toISOString() : null;
 }
 
 // Total size of a directory in bytes. File symlinks are skipped, directory
 // symlinks are never descended into. Per-entry errors are counted and the walk continues.
-export function dirSize(target: string, {maxEntries = 500_000, maxDepth = 64}: SizeOptions = {}): Measurement {
+export function dirSize(host: Host, target: string, {maxEntries = 500_000, maxDepth = 64}: SizeOptions = {}): Measurement {
   let seen = 0, errors = 0, truncated = false;
   function walk(current: string, depth: number): number {
     if (truncated || depth > maxDepth) return 0;
-    let entries: fs.Dirent[];
-    try {entries = fs.readdirSync(current, {withFileTypes: true});} catch {errors++; return 0;}
+    let entries;
+    try {entries = host.readdir(current);} catch {errors++; return 0;}
     let total = 0;
     for (const entry of entries) {
       if (++seen > maxEntries) {truncated = true; break;}
-      if (entry.isSymbolicLink()) continue;
+      if (entry.kind === 'symlink') continue;
       const child = path.join(current, entry.name);
-      if (entry.isDirectory()) total += walk(child, depth + 1);
+      if (entry.kind === 'dir') total += walk(child, depth + 1);
       else {
-        try {total += fs.lstatSync(child).size;} catch {errors++;}
+        const info = host.lstat(child);
+        if (info) total += info.size;
+        else errors++;
       }
     }
     return total;
@@ -118,9 +113,12 @@ export function dirSize(target: string, {maxEntries = 500_000, maxDepth = 64}: S
 }
 
 // Size of a file or directory. Top-level symlinks are measured through once.
-export function measure(target: string, options: SizeOptions = {}): Measurement {
-  if (isDir(target)) return dirSize(target, options);
-  try {return {bytes: fs.lstatSync(target).size, errors: 0, truncated: false};} catch {return {bytes: 0, errors: 1, truncated: false};}
+// Hosts may provide a native implementation with the same semantics.
+export function measure(host: Host, target: string, options: SizeOptions = {}): Measurement {
+  if (host.measure) return host.measure(target, options);
+  if (isDir(host, target)) return dirSize(host, target, options);
+  const info = host.lstat(target);
+  return info ? {bytes: info.size, errors: 0, truncated: false} : {bytes: 0, errors: 1, truncated: false};
 }
 
 // True when the path matches any exclusion pattern (by basename or full path).
@@ -143,7 +141,7 @@ export function rulePatternMatches(target: string, pattern: string): boolean {
 // Bounded walk over `roots` yielding dirs matching any of `patterns`. Never
 // descends into hidden dirs, symlinks, excluded dirs, SKIP_DIR_NAMES dirs, or a
 // dir that already matched.
-export function* iterMatches(roots: string[], patterns: string[], {maxDepth, maxDirs, excludes, warnings}: WalkOptions): Generator<string> {
+export function* iterMatches(host: Host, roots: string[], patterns: string[], {maxDepth, maxDirs, excludes, warnings}: WalkOptions): Generator<string> {
   const matches = (target: string) => patterns.some(pattern => rulePatternMatches(target, pattern));
   const stack: [string, number][] = [...roots].reverse().map(root => [root, 0]);
   let visited = 0;
@@ -156,13 +154,13 @@ export function* iterMatches(roots: string[], patterns: string[], {maxDepth, max
     if (excluded(current, excludes)) continue;
     if (matches(current)) {yield current; continue;}
     if (depth >= maxDepth) continue;
-    let entries: fs.Dirent[];
-    try {entries = fs.readdirSync(current, {withFileTypes: true});} catch (error) {
+    let entries;
+    try {entries = host.readdir(current);} catch (error) {
       warnings?.push(`cannot read ${current}: ${(error as Error).message}`);
       continue;
     }
     for (const entry of entries) {
-      if (entry.isSymbolicLink() || !entry.isDirectory() || entry.name.startsWith('.')) continue;
+      if (entry.kind !== 'dir' || entry.name.startsWith('.')) continue;
       const child = path.join(current, entry.name);
       if (excluded(child, excludes)) continue;
       // A matched child is yielded and never descended into (e.g. node_modules is
