@@ -266,6 +266,9 @@ Stable shape, also what the apps receive (`schema_version: 1`):
 - **Size**: `dirSize` walks with `readdir`, never follows symlinks, counts
   per-entry permission errors and continues, and caps entries per directory
   (500,000). A capped measurement is reported as `size_complete: false`.
+  Each file counts the smaller of its size and its allocated blocks, so sparse
+  files (a VM disk image such as `Docker.raw`, which declares hundreds of GB)
+  count what they really take on disk, while small files keep their exact size.
 - **`last_modified`** is the mtime of the directory itself (a cheap proxy for
   "last used") — computing the newest mtime inside would be much slower.
 - **One problematic directory never aborts a scan**: permission and IO errors
@@ -293,8 +296,8 @@ Stable shape, also what the apps receive (`schema_version: 1`):
 
 - Global discovery covers supported artifact categories on the local disk; it is
   bounded and excludes protected system directories and external volumes.
-- Measurements are scans, not `du`-equivalent block usage (report-size vs
-  disk-size differences are expected).
+- Measurements are scans: close to `du`, but small files count their exact size
+  rather than whole blocks, and hard links or APFS clones count once per path.
 - CLI is analysis only. The Mac app's cleanup uses the Trash for authorized
   artifacts; no permanent deletion, symlink following or parallel scanning.
 

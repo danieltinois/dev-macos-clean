@@ -6,10 +6,11 @@ import path from 'node:path';
 const created: string[] = [];
 
 // Create a file of exactly `size` bytes (sparse, fast).
+// A file holding `size` real bytes (truncating would make it sparse, and sizes
+// count what files take on disk).
 export function makeFile(target: string, size: number): string {
   fs.mkdirSync(path.dirname(target), {recursive: true});
-  fs.writeFileSync(target, '');
-  fs.truncateSync(target, size);
+  fs.writeFileSync(target, Buffer.alloc(size, 'x'));
   return target;
 }
 

@@ -9,7 +9,7 @@
 // * Sizes above a configurable entry cap are reported as truncated.
 // All disk access goes through a Host (see host.ts).
 import * as path from './paths';
-import type {Host, Measurement, SizeOptions} from './host';
+import type {Host, Info, Measurement, SizeOptions} from './host';
 
 export type {Measurement, SizeOptions};
 export interface WalkOptions {maxDepth: number; maxDirs: number; excludes?: string[]; warnings?: string[]}
@@ -87,6 +87,11 @@ export function mtime(host: Host, target: string): string | null {
   return info ? new Date(info.mtimeMs).toISOString() : null;
 }
 
+// Bytes a file takes on disk: its size, or its allocated blocks when fewer
+// (sparse and compressed files). Small files keep their exact size instead of
+// a whole block, so totals still add up to what the files hold.
+export const onDisk = (info: Info) => info.allocated === undefined ? info.size : Math.min(info.size, info.allocated);
+
 // Total size of a directory in bytes. File symlinks are skipped, directory
 // symlinks are never descended into. Per-entry errors are counted and the walk continues.
 export function dirSize(host: Host, target: string, {maxEntries = 500_000, maxDepth = 64}: SizeOptions = {}): Measurement {
@@ -103,7 +108,7 @@ export function dirSize(host: Host, target: string, {maxEntries = 500_000, maxDe
       if (entry.kind === 'dir') total += walk(child, depth + 1);
       else {
         const info = host.lstat(child);
-        if (info) total += info.size;
+        if (info) total += onDisk(info);
         else errors++;
       }
     }
@@ -118,7 +123,7 @@ export function measure(host: Host, target: string, options: SizeOptions = {}): 
   if (host.measure) return host.measure(target, options);
   if (isDir(host, target)) return dirSize(host, target, options);
   const info = host.lstat(target);
-  return info ? {bytes: info.size, errors: 0, truncated: false} : {bytes: 0, errors: 1, truncated: false};
+  return info ? {bytes: onDisk(info), errors: 0, truncated: false} : {bytes: 0, errors: 1, truncated: false};
 }
 
 // True when the path matches any exclusion pattern (by basename or full path).
