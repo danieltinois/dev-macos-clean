@@ -58,7 +58,7 @@ context (e.g. an SDK another tool depends on) without touching rule files.
 dev-macos-clean/
 ├── package.json            # scripts (build, scan, test, typecheck, test:apple), `devclean` bin
 ├── tsconfig.json           # strict TypeScript, type-checked with `tsc --noEmit`
-├── scripts/build.ts        # bundles the UI (ui/) and the engine into dist/ for the Swift apps
+├── scripts/build.ts        # bundles the engine into dist/ for the Swift apps
 ├── scripts/engine.ts       # bundles core/ + rules/ into dist/engine/ for the Swift apps
 ├── rules/                  # one declarative rule per JSON file (data, not code)
 │   ├── node-modules.json
@@ -83,25 +83,19 @@ dev-macos-clean/
 ├── cli/
 │   ├── devclean.ts         # `devclean scan` (human text or --json)
 │   └── devclean.test.ts
-├── ui/                     # the web UI shown by the Swift apps (sandboxed, no Node access)
-│   ├── index.html, renderer.ts, style.css
-│   ├── bridge.ts           # the window.devclean contract and the report the shell hands over
-│   ├── platform.ts         # what differs between Mac and iPhone
-│   └── *.test.ts
 └── apple/                  # Swift apps for macOS and iPhone (see below)
-    ├── DevClean/           # the app: WebShell (WKWebView), Mac and iPhone actions
-    └── DevCleanKit/        # engine bridge, native host, cleanup, photos, Files folders
+    ├── DevClean/           # the SwiftUI interface, Floco, Mac and iPhone actions
+    └── DevCleanKit/        # engine bridge, native host, cleanup, photos, Files folders, UI logic
 ```
 
 Bun runs the CLI and the tests straight from the `.ts` sources. `bun run build`
-bundles the renderer to a browser script and the engine (with the rules embedded)
-for JavaScriptCore in `dist/`; an Xcode build phase copies both into the app.
+bundles the engine (with the rules embedded) for JavaScriptCore in `dist/`; an
+Xcode build phase copies it into the app.
 
 How a scan flows through the Mac app:
 
-1. `renderer.ts` calls `window.devclean.scan()`; `WebShell.swift` receives it as
-   a script message from the page's main frame.
-2. The shell runs the bundled engine in JavaScriptCore off the main thread, with
+1. The SwiftUI interface asks `AppModel` to scan, which calls `MacActions`.
+2. It runs the bundled engine in JavaScriptCore off the main thread, with
    `NativeHost` doing the disk access: `scan(rules, {globalScan: true})`.
 3. `Cleanup.prepare` marks each finding `cleanup_allowed` / `cleanup_review` /
    `auto_clean` from `core/policy.ts` and records the identity (realpath, device,
@@ -348,8 +342,8 @@ runs the **same TypeScript engine** from `core/` inside JavaScriptCore, with the
 rules from `rules/` embedded: Swift handles disk access and moving items to the
 Trash, and TypeScript decides what each item is and what may be cleaned.
 
-- **Mac** — shows the shared interface (Floco, tutorial, animations) in a
-  native WebView. It scans the disk and cleans
+- **Mac** — a native SwiftUI interface (Floco, tutorial, animations), shared
+  with the iPhone. It scans the disk and cleans
   through the Trash with the same rules: a confirmation that defaults to
   **Cancelar**, revalidation of every path before moving it, and no permanent
   deletion.
@@ -382,8 +376,8 @@ open apple/DevClean.xcodeproj          # pick "My Mac" or an iPhone and run
 bun run test:apple                     # builds the engine and runs the Swift tests
 ```
 
-Building in Xcode needs Bun installed: a build phase builds the interface
-(`ui/`) and `devclean-engine.js` (`core/`) and copies both into the app. To
+Building in Xcode needs Bun installed: a build phase builds `devclean-engine.js`
+(`core/`) and copies it into the app. To
 run on a real iPhone, select your team in *Signing & Capabilities*.
 The Mac app doesn't use App Sandbox (it needs to read the whole disk) and needs
 **Full Disk Access** to measure some folders.
@@ -422,16 +416,14 @@ tools before cleaning their dependencies.
 Finder if needed; emptying the Trash is up to the user. Partial failures are
 shown, and the items that failed stay in the report.
 
-The page runs sandboxed in a WKWebView, served from the app's own `devclean://`
-scheme with a strict CSP, and talks to the app through a bridge limited to
-specific operations that only take indices into the last report. Paths sent to
-the Finder come only from that report. There is no HTTP server and no remote
-content in the interface.
+The interface is native SwiftUI with no web content. It hands the trusted side
+only indices into the last report plus its token, never paths; paths sent to the
+Finder come only from that report. There is no HTTP server and nothing remote.
 
 This version is built from the checkout with Xcode; it doesn't ship a `.dmg`
 installer, signing or notarization yet.
 
-Validation: `bun test` (core, CLI and UI), `bun run typecheck` and
+Validation: `bun test` (core and CLI), `bun run typecheck` and
 `bun run test:apple` (Swift).
 
 Mascot: ASCII cat generated by `scripts/cat-art.ts` from the photo
