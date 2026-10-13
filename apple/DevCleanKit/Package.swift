@@ -1,6 +1,6 @@
 // swift-tools-version: 6.0
-// Swift port of core/ (scanner, rules, report) and desktop/cleanup.ts, shared by
-// the macOS and iOS apps. Scanning and cleanup only build on macOS.
+// The native side shared by the macOS and iOS apps: the engine bridge, the host,
+// cleanup, the report model, and the photo and Files sources (iOS only).
 import PackageDescription
 
 let package = Package(

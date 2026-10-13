@@ -1,5 +1,5 @@
 // The report contract (schema_version 1), byte-compatible with core/types.ts.
-// Cleanup fields are optional: the CLI omits them, the desktop apps add them.
+// Cleanup fields are optional: the CLI omits them, the apps add them.
 import Foundation
 
 public enum Severity: String, Codable, CaseIterable, Sendable {
@@ -93,7 +93,7 @@ public struct Report: Codable, Hashable, Sendable {
 
   public var scannedDate: Date? {parseISODate(scannedAt)}
 
-  // Decode a report exported by the CLI (`--json`) or either desktop app.
+  // Decode a report exported by the CLI (`--json`) or the apps.
   public static func decode(_ data: Data) throws -> Report {
     let report = try JSONDecoder().decode(Report.self, from: data)
     guard report.schemaVersion == DevCleanKit.schemaVersion else {throw ReportError.unsupportedVersion(report.schemaVersion)}

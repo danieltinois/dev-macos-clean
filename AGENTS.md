@@ -2,7 +2,7 @@
 
 Guide for AI coding agents working on DevClean, a macOS developer-storage
 analyzer: a scanner/CLI (`core/`, `cli/`) and native Swift apps for macOS and
-iPhone (`apple/`) that run the same engine and a shared web UI (`desktop/`), and
+iPhone (`apple/`) that run the same engine and a shared web UI (`ui/`), and
 move known regenerable caches (or, on the iPhone, photos and files) to the Trash. The README covers product details;
 this file covers how to work on the code.
 
@@ -15,12 +15,12 @@ bun install            # dev dependencies (TypeScript, Bun types)
 bun test               # all tests (bun:test); `bun test core/scanner.test.ts` for one file
 bun run typecheck      # tsc --noEmit, strict; must pass, tests don't type-check
 bun run scan --json    # run the CLI from source (analysis only, safe to run)
-bun run build          # bundle the UI (desktop/) and the engine into dist/ for the Swift apps
+bun run build          # bundle the UI (ui/) and the engine into dist/ for the Swift apps
 bun run build:engine   # bundle core/ + rules/ for JavaScriptCore: dist/engine/devclean-engine.js
 ```
 
 Before finishing a change, run `bun test` and `bun run typecheck`. If you touch
-`desktop/` or `scripts/build.ts`, also run `bun run build`.
+`ui/` or `scripts/build.ts`, also run `bun run build`.
 
 The Swift apps under `apple/` need Xcode and Bun (an Xcode build phase runs
 `apple/bundle-resources.sh`, which builds the UI and the engine). Prefix commands with
@@ -52,22 +52,22 @@ both builds: the Swift apps run the same engine.
   JavaScriptCore entry (`globalThis.DevCleanEngine`, JSON in and out, rules
   embedded at build time by `scripts/engine.ts`).
 - `cli/devclean.ts`: `devclean scan`, human text or `--json`. Analysis only.
-- `desktop/`: the web UI the Swift apps show (the name is historical).
+- `ui/`: the web UI the Swift apps show.
   `index.html`, `style.css` and `renderer.ts` (sandboxed page), `bridge.ts`
   (the `window.devclean` contract and the report the shell hands over),
   `platform.ts` (Mac vs iPhone texts), plus `selection.ts`, `disk.ts`,
   `tutorial.ts`, `mascot.ts` and `motion.ts`.
 - `scripts/build.ts`: bundles the renderer as a browser script and copies the
-  HTML and CSS to `dist/desktop/`, and writes the engine to `dist/engine/`.
+  HTML and CSS to `dist/ui/`, and writes the engine to `dist/engine/`.
   `dist/` is generated, so don't edit or commit it.
 - `apple/`: the native Swift app. It runs the TypeScript engine in
-  JavaScriptCore and, on macOS and iPhone, the web UI (`desktop/index.html`,
+  JavaScriptCore and, on macOS and iPhone, the web UI (`ui/index.html`,
   `renderer.ts`, `style.css`) in a WKWebView, so Swift holds no rules, policy
   or UI of its own. `DevClean/WebShell.swift` is the shared shell
   (`window.devclean` over script messages, plus `platform`; long scans push `devclean-progress`
   events to the page). `DesktopWindow.swift` (`MacActions`:
   disk and Trash) and `PhoneWindow.swift` (`PhoneActions`: photo library and
-  Recently Deleted) answer its calls. `desktop/platform.ts` holds the texts
+  Recently Deleted) answer its calls. `ui/platform.ts` holds the texts
   and buttons that differ per platform. `DevCleanKit/` has `Engine.swift` (the
   JavaScriptCore bridge), `NativeHost.swift` (the Host: POSIX calls plus a
   native `measure`, the hot loop, `storage`, and optional `photos` and `files`),
@@ -83,7 +83,7 @@ both builds: the Swift apps run the same engine.
   `photos://<localIdentifier>`, with the file name in `metadata.label`. File rules
   (`files`) do the same for files in folders picked in the Files app
   (`Host.files()`), with real paths. `report.storage` is the volume's space
-  (`Host.storage()`), shown in the disk panel (`desktop/disk.ts`).
+  (`Host.storage()`), shown in the disk panel (`ui/disk.ts`).
 
 ## Safety invariants (do not weaken)
 
@@ -122,7 +122,7 @@ This tool deletes things on users' machines. Treat these as hard rules:
 - **`bun build` inlines `__dirname`, `__filename` and `import.meta.dirname` as
   the build machine's absolute paths.** `import.meta.dirname` is fine only in
   code that runs from source under Bun (CLI, tests, `core` defaults).
-- The UI (`desktop/`, besides tests) runs in WKWebView: browser APIs only, no
+- The UI (`ui/`, besides tests) runs in WKWebView: browser APIs only, no
   `node:` modules or `Bun.*`. `core/` must also run in JavaScriptCore, so it
   uses no `node:` modules, `process` or `Bun.*` at all, except in `node.ts`
   and `index.ts`. `core/engine.test.ts` enforces this.
@@ -171,7 +171,7 @@ This tool deletes things on users' machines. Treat these as hard rules:
   `develop` (`feat/…`, `fix/…`, `refactor/…`, `docs/…`, `chore/…`) and open PRs
   into `develop`. `develop` merges into `main` for releases.
 - Commits follow Conventional Commits with an optional scope:
-  `feat(desktop): …`, `fix(scanner): …`, `refactor: …`.
+  `feat(ui): …`, `fix(scanner): …`, `refactor: …`.
 - The user is the sole author. Don't add `Co-Authored-By` trailers or "Generated
   with" lines to commits or PRs.
 - Don't push to `main` or `develop` directly, and don't delete branches without

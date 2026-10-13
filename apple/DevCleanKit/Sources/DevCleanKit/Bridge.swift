@@ -1,4 +1,4 @@
-// The web UI (desktop/renderer.ts) talks to its shell through `window.devclean`.
+// The web UI (ui/renderer.ts) talks to its shell through `window.devclean`.
 // In the Swift app those calls arrive as script messages; this validates them:
 // only indices into the last report plus its token, never paths from the page.
 import Foundation
@@ -54,7 +54,7 @@ public enum BridgeRequest: Equatable, Sendable {
   }
 }
 
-// JSON replies in the shapes desktop/bridge.ts declares.
+// JSON replies in the shapes ui/bridge.ts declares.
 public enum BridgeReply {
   public static let canceled = #"{"canceled":true}"#
 

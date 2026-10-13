@@ -2,8 +2,8 @@
 // cleanup is automatic. The scanner decides what exists; this decides what may
 // be moved. A rule never grants cleanup.
 //
-// Only decisions live here. The trusted side of each app (desktop/cleanup.ts,
-// the Swift apps) captures identities, issues tokens and moves to the Trash.
+// Only decisions live here. The trusted side (apple/DevCleanKit Cleanup.swift)
+// captures identities, issues tokens and moves to the Trash.
 import * as path from './paths';
 import {buildTotals} from './analyzer';
 import type {Host} from './host';

@@ -1,5 +1,5 @@
-// Cleanup through the engine's policy and the native trusted side, mirroring
-// desktop/cleanup.test.ts. A fake trash records calls; nothing reaches the real Trash.
+// Cleanup through the engine's policy and the native trusted side (the policy
+// itself is tested in core/policy.test.ts). A fake trash records calls; nothing reaches the real Trash.
 import Foundation
 import Testing
 @testable import DevCleanKit

@@ -58,7 +58,7 @@ context (e.g. an SDK another tool depends on) without touching rule files.
 dev-macos-clean/
 ├── package.json            # scripts (build, scan, test, typecheck, test:apple), `devclean` bin
 ├── tsconfig.json           # strict TypeScript, type-checked with `tsc --noEmit`
-├── scripts/build.ts        # bundles the UI (desktop/) and the engine into dist/ for the Swift apps
+├── scripts/build.ts        # bundles the UI (ui/) and the engine into dist/ for the Swift apps
 ├── scripts/engine.ts       # bundles core/ + rules/ into dist/engine/ for the Swift apps
 ├── rules/                  # one declarative rule per JSON file (data, not code)
 │   ├── node-modules.json
@@ -83,7 +83,7 @@ dev-macos-clean/
 ├── cli/
 │   ├── devclean.ts         # `devclean scan` (human text or --json)
 │   └── devclean.test.ts
-├── desktop/                # the web UI shown by the Swift apps (sandboxed, no Node access)
+├── ui/                     # the web UI shown by the Swift apps (sandboxed, no Node access)
 │   ├── index.html, renderer.ts, style.css
 │   ├── bridge.ts           # the window.devclean contract and the report the shell hands over
 │   ├── platform.ts         # what differs between Mac and iPhone
@@ -383,7 +383,7 @@ bun run test:apple                     # builds the engine and runs the Swift te
 ```
 
 Building in Xcode needs Bun installed: a build phase builds the interface
-(`desktop/`) and `devclean-engine.js` (`core/`) and copies both into the app. To
+(`ui/`) and `devclean-engine.js` (`core/`) and copies both into the app. To
 run on a real iPhone, select your team in *Signing & Capabilities*.
 The Mac app doesn't use App Sandbox (it needs to read the whole disk) and needs
 **Full Disk Access** to measure some folders.

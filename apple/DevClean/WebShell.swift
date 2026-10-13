@@ -1,6 +1,6 @@
-// The shell shared by macOS and iPhone: the web UI (desktop/index.html,
+// The shell shared by macOS and iPhone: the web UI (ui/index.html,
 // renderer.ts, style.css) in a WKWebView, with `window.devclean`
-// (desktop/bridge.ts) answered natively.
+// (ui/bridge.ts) answered natively.
 //
 // The page stays sandboxed: it is served from the devclean:// scheme (only the
 // three UI files), can't navigate or open windows, and only sends indices into
@@ -13,7 +13,7 @@ import WebKit
 // One platform's answers to window.devclean.
 @MainActor
 protocol ShellActions: AnyObject {
-  // 'mac' or 'ios': which texts and buttons the UI shows (desktop/platform.ts).
+  // 'mac' or 'ios': which texts and buttons the UI shows (ui/platform.ts).
   var platform: String {get}
   var shell: WebShell? {get set}
   func scan() async throws -> String

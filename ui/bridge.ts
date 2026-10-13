@@ -16,7 +16,7 @@ export interface CleanupOutcome {moved: {path: string; size_bytes: number}[]; er
 // The API the page sees as `window.devclean`. It only takes indices into the last
 // report plus its token, never paths.
 export interface DevcleanBridge {
-  // 'mac' or 'ios' (desktop/platform.ts).
+  // 'mac' or 'ios' (ui/platform.ts).
   platform?: string;
   // Folders picked in the Files app, as labels (iPhone only). Adding opens the system picker.
   folders?(): Promise<string[]>;
