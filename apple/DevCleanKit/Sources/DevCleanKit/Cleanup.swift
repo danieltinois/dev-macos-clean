@@ -20,6 +20,9 @@ public enum Cleanup {
     public var errorDescription: String? {message}
   }
 
+  // Photo library items are reported as `photos://<localIdentifier>` (core/policy.ts PHOTO_PREFIX).
+  public static let photoPrefix = "photos://"
+
   // How a target is identified: files by fileIdentity, photos by PhotoLibrary.identity.
   public typealias Identity = (String) throws -> String
 

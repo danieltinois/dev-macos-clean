@@ -50,10 +50,11 @@ export const STALE_DAYS = 90;
 // remove them, for review. They go to the library's Recently Deleted album,
 // always confirmed by the system.
 export const PHOTO_PREFIX = 'photos://';
-// The only photos automatic cleanup takes: byte-identical copies (the oldest
-// stays) and burst frames nobody picked (the key photo stays). Nothing is lost,
-// and they still wait 30 days in Recently Deleted. Their rules must be SAFE.
-const photoAutomatic = new Set(['duplicate-photos', 'burst-extras']);
+// Photos that need no review: byte-identical copies (the oldest stays) and
+// burst frames nobody picked (the key photo stays). Nothing is lost, and they
+// still wait 30 days in Recently Deleted. Their rules must be SAFE. Photos are
+// never cleaned automatically: the user picks them.
+const photoNoReview = new Set(['duplicate-photos', 'burst-extras']);
 // Files from folders the user picked in the Files app (iPhone): only these rules,
 // only regular files, always for review. They go to Recently Deleted in Files.
 const fileTargets = new Set(['large-files', 'old-downloads', 'app-file-caches', 'duplicate-files', 'installers', 'log-files']);
@@ -61,7 +62,7 @@ const photoTargets = new Set(['large-videos', 'large-photos', 'duplicate-photos'
 // Project outputs only qualify when the project has not been touched for STALE_DAYS.
 export function isAutomatic(finding: PolicyInput, now: number) {
   if (automatic.has(finding.rule_id)) return true;
-  if (finding.path.startsWith(PHOTO_PREFIX)) return photoAutomatic.has(finding.rule_id) && finding.severity === 'SAFE';
+  if (finding.path.startsWith(PHOTO_PREFIX)) return false;
   if (!projectOutputs[finding.rule_id]) return false;
   const modified = Date.parse(finding.last_modified ?? '');
   return Number.isFinite(modified) && now - modified >= STALE_DAYS * 86400000;
@@ -98,7 +99,7 @@ export function policy(host: Host, finding: PolicyInput, home: string, appRoot: 
   const deny = (reason: string): Policy => ({allowed:false, review:false, reason});
   if (finding.path.startsWith(PHOTO_PREFIX)) {
     if (!photoTargets.has(finding.rule_id) || finding.severity === 'DANGER') return deny('Este item não está na lista de limpeza do DevClean.');
-    return {allowed:true, review:!(photoAutomatic.has(finding.rule_id) && finding.severity === 'SAFE')};
+    return {allowed:true, review:!(photoNoReview.has(finding.rule_id) && finding.severity === 'SAFE')};
   }
   const target = path.resolve(host.cwd(), finding.path);
   if (overlaps(target, appRoot)) return deny('Arquivos do próprio DevClean estão protegidos.');

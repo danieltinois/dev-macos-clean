@@ -86,6 +86,9 @@ final class AppModel {
   var categories: [String] {report.map {$0.totals.byCategory.keys.sorted()} ?? []}
   private func sum(_ findings: some Sequence<Finding>) -> Int {findings.reduce(0) {$0 + $1.sizeBytes}}
   var safeBytes: Int {sum(report?.findings.filter(\.isSafe) ?? [])}
+  // What cleaning frees on the device, and what only in iCloud (iPhone).
+  var onDeviceBytes: Int {sum(report?.findings.filter(\.onDevice) ?? [])}
+  var cloudBytes: Int {sum(report?.findings.filter {!$0.onDevice} ?? [])}
   var autoBytes: Int {sum(report?.findings.filter {$0.autoClean == true} ?? [])}
   var hasAuto: Bool {report?.findings.contains {$0.autoClean == true} ?? false}
   private var staleShown: [Finding] {shown.map(\.finding).filter {$0.canClean && $0.isStale}}
@@ -253,6 +256,55 @@ final class AppModel {
   }
   func addFolder() async {await changeFolders {try await actions.addFolder()}}
   func removeFolder(_ index: Int) async {await changeFolders {try actions.removeFolder(index)}}
+
+  // MARK: Photo review (iPhone)
+
+  // Photos to review, one set per rule, in the order people usually clean them:
+  // what loses nothing first, then what takes the most room.
+  struct PhotoSet: Identifiable {
+    let rule: String
+    let name: String
+    let items: [Indexed]
+    let bytes: Int
+    // Of `bytes`, what is only in iCloud.
+    let cloudBytes: Int
+    var id: String {rule}
+    // Copies and similar photos come in groups, each around the photo that stays.
+    var grouped: Bool {rule == "duplicate-photos" || rule == "similar-photos"}
+    // Sets that start selected: copies, burst extras and the weaker similar photos.
+    var preselected: Bool {["duplicate-photos", "burst-extras", "similar-photos"].contains(rule)}
+  }
+  private static let photoOrder = ["duplicate-photos", "burst-extras", "similar-photos", "large-videos", "screen-recordings", "screenshots", "large-photos"]
+
+  var photoSets: [PhotoSet] {
+    guard let report else {return []}
+    let photos = report.findings.enumerated().filter {$0.element.path.hasPrefix(Cleanup.photoPrefix) && $0.element.canClean && (!filters.onDeviceOnly || $0.element.onDevice)}
+    let byRule = Dictionary(grouping: photos) {$0.element.ruleId}
+    return Self.photoOrder.compactMap {rule in
+      guard let items = byRule[rule], let first = items.first else {return nil}
+      let indexed = items.map {Indexed(index: $0.offset, finding: $0.element)}.sorted {$0.finding.sizeBytes > $1.finding.sizeBytes}
+      return PhotoSet(rule: rule, name: first.element.name, items: indexed, bytes: sum(items.map(\.element)), cloudBytes: sum(items.map(\.element).filter {!$0.onDevice}))
+    }
+  }
+
+  // The set being reviewed full screen.
+  var reviewing: String?
+  var reviewSet: PhotoSet? {reviewing.flatMap {rule in photoSets.first {$0.rule == rule}}}
+
+  // Sends what the review picked to Recently Deleted (one system confirmation).
+  func deleteReviewed(_ indices: Set<Int>) async {
+    reviewing = nil
+    selected = indices
+    await clean()
+  }
+
+  // Opens one item in Quick Look from the review.
+  func preview(_ index: Int) async {
+    let show = Task {try? await Task.sleep(for: .milliseconds(200)); if !Task.isCancelled {opening = true}}
+    do {try await actions.reveal(index)} catch {setStatus(error.localizedDescription, error: true)}
+    show.cancel()
+    opening = false
+  }
 
   // MARK: Tour
 

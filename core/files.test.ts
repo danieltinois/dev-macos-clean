@@ -22,17 +22,19 @@ test('fileMatches needs every given criterion', () => {
   assert.equal(fileMatches({extensions: ['zip']}, item({path: '/d/Backup.ZIP'}), NOW), true);
   assert.equal(fileMatches({extensions: ['zip']}, item({path: '/d/zip'}), NOW), false);
   assert.equal(fileMatches({extensions: ['zip']}, item({path: '/d/.zip'}), NOW), false);
-  assert.equal(fileMatches({duplicate: 'extra'}, item({path: '/d/a.pdf'}), NOW, new Set(['/d/a.pdf'])), true);
+  assert.equal(fileMatches({duplicate: 'extra'}, item({path: '/d/a.pdf'}), NOW, new Map([['/d/a.pdf', item({path: '/d/b.pdf'})]])), true);
   assert.equal(fileMatches({min_bytes: 10}, item({bytes: 9}), NOW), false);
 });
 
 test('duplicate files need the same content hash; the oldest stays', () => {
   const file = (path: string, modified_ms: number, digest: string | null | undefined, bytes = 5 * MB) => item({path, modified_ms, digest, bytes});
   const extras = duplicateFileExtras([file('/d/a.pdf', 1, 'x'), file('/d/a 2.pdf', 2, 'x'), file('/d/b.pdf', 3, 'y'), file('/d/c.pdf', 4, null), file('/d/d.pdf', 5, null), file('/d/e.pdf', 6, undefined), file('/d/f.pdf', 7, undefined)]);
-  assert.deepEqual([...extras], ['/d/a 2.pdf']);
+  assert.deepEqual([...extras].map(([path, keeper]) => [path, keeper.path]), [['/d/a 2.pdf', '/d/a.pdf']]);
   const report = scan(fileHost(() => [file('/d/a.pdf', 1, 'x'), file('/d/a 2.pdf', 2, 'x'), item({path: '/d/App/Library/Caches/img.bin'}), item({path: '/d/setup.zip'}), item({path: '/d/app.log'})]), loadRules(), {home: '/nonexistent', sources: ['files'], now: NOW});
   assert.deepEqual(Object.fromEntries(report.findings.map(f => [f.path, f.rule_id])),
     {'/d/a 2.pdf': 'duplicate-files', '/d/App/Library/Caches/img.bin': 'app-file-caches', '/d/setup.zip': 'installers', '/d/app.log': 'log-files'});
+  // The details say which file stays.
+  assert.equal(report.findings.find(f => f.rule_id === 'duplicate-files')!.metadata['Fica'], 'No Meu iPhone › a.pdf');
   for (const finding of report.findings) assert.equal(policy.isAutomatic(finding, NOW), false);
 });
 
@@ -47,10 +49,12 @@ test('picked files on the iPhone become findings with a readable label and where
   const report = scan(fileHost(() => files), loadRules(), {home: '/nonexistent', sources: ['files'], now: NOW});
   const byPath = Object.fromEntries(report.findings.map(f => [f.path, f]));
   assert.deepEqual(Object.fromEntries(Object.entries(byPath).map(([p, f]) => [p, f.rule_id])),
-    {'/d/movie.mov': 'large-files', '/d/Downloads/old.pdf': 'old-downloads'});
+    {'/d/movie.mov': 'large-files', '/d/backup.zip': 'installers', '/d/Downloads/old.pdf': 'old-downloads'});
+  assert.equal(byPath['/d/backup.zip']!.metadata.on_device, 'no');
+  assert.match(byPath['/d/backup.zip']!.metadata['Onde está']!, /não no iPhone/);
   assert.equal(byPath['/d/movie.mov']!.metadata.label, 'iCloud Drive › movie.mov');
   assert.match(byPath['/d/movie.mov']!.metadata['Onde está']!, /Remover Download/);
-  assert.deepEqual(report.totals.by_category, {downloads: 1000, files: 2000 * MB});
+  assert.deepEqual(report.totals.by_category, {downloads: 1000, files: 2000 * MB, installers: 500 * MB});
 });
 
 test('picked folders are skipped without the files source, and errors become warnings', () => {

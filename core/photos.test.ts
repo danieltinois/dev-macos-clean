@@ -3,7 +3,7 @@ import {test} from 'bun:test';
 import assert from 'node:assert/strict';
 import {loadRules, nodeHost} from './node';
 import * as policy from './policy';
-import {duplicateExtras, photoMatches, scan, similarExtras} from './scanner';
+import {duplicateExtras, markOnlyInCloud, photoMatches, scan, similarExtras} from './scanner';
 import type {PhotoAsset} from './host';
 
 const DAY = 86400000, NOW = Date.parse('2026-10-13T12:00:00Z');
@@ -34,19 +34,23 @@ test('exact copies are extras, except the oldest of each group', () => {
     copy('first', NOW - 10 * DAY), copy('again', NOW - 2 * DAY), copy('third', NOW),
     copy('other-size', NOW, {bytes: 3_000_001}), copy('video', NOW, {media: 'video', duration_ms: 4000}), copy('unknown', NOW, {bytes: null}),
   ];
-  assert.deepEqual([...duplicateExtras(library)].sort(), ['again', 'third']);
+  assert.deepEqual([...duplicateExtras(library)].map(([id, keeper]) => [id, keeper.id]).sort(), [['again', 'first'], ['third', 'first']]);
   const report = scan(photoHost(() => library), loadRules(), {home: '/nonexistent', sources: ['photos'], now: NOW});
   assert.deepEqual(report.findings.map(f => [f.rule_id, f.path.slice(policy.PHOTO_PREFIX.length)]), [['duplicate-photos', 'again'], ['duplicate-photos', 'third']]);
+  // Each copy says which photo stays, so the app can show them together.
+  assert.deepEqual(report.findings.map(f => [f.metadata['Fica'], f.metadata.keeper]), [['IMG_0001.JPG', `${policy.PHOTO_PREFIX}first`], ['IMG_0001.JPG', `${policy.PHOTO_PREFIX}first`]]);
 });
 
-test('items only in iCloud take no space here and are skipped; the others say where they are', () => {
+test('items only in iCloud are listed and marked; every item says where it is', () => {
   const big = (id: string, local: boolean | null, cloud: boolean | null) => asset({id, media: 'video', bytes: 200 * 1024 ** 2, local, cloud});
   const library = [big('phone-and-cloud', true, true), big('cloud-only', false, true), big('phone-only', true, false), big('unknown', null, null), asset({id: 'raw', bytes: 25 * 1024 ** 2})];
   const report = scan(photoHost(() => library), loadRules(), {home: '/nonexistent', sources: ['photos'], now: NOW});
   const byId = Object.fromEntries(report.findings.map(f => [f.path.slice(policy.PHOTO_PREFIX.length), f]));
   assert.deepEqual(Object.fromEntries(Object.entries(byId).map(([id, f]) => [id, f.rule_id])),
-    {'phone-and-cloud': 'large-videos', 'phone-only': 'large-videos', unknown: 'large-videos', raw: 'large-photos'});
+    {'phone-and-cloud': 'large-videos', 'cloud-only': 'large-videos', 'phone-only': 'large-videos', unknown: 'large-videos', raw: 'large-photos'});
   assert.match(byId['phone-and-cloud']!.metadata['Onde está']!, /Otimizar Armazenamento/);
+  assert.match(byId['cloud-only']!.metadata['Onde está']!, /quase nada no iPhone/);
+  assert.deepEqual(Object.entries(byId).filter(([, f]) => f.metadata.on_device === 'no').map(([id]) => id), ['cloud-only']);
   assert.match(byId['phone-only']!.metadata['Onde está']!, /única cópia/);
   assert.equal(byId['unknown']!.metadata['Onde está'], undefined);
 });
@@ -59,9 +63,9 @@ test('a copy on the iPhone of an original only in iCloud is still a copy', () =>
 
 test('with content hashes, only identical bytes are copies, and unreadable items never are', () => {
   const copy = (id: string, created_ms: number, digest: string | null | undefined) => asset({id, created_ms, width: 4032, height: 3024, bytes: 3_000_000, digest});
-  assert.deepEqual([...duplicateExtras([copy('a', 1, 'x'), copy('b', 2, 'x'), copy('c', 3, 'y'), copy('d', 4, null), copy('e', 5, null)])], ['b']);
+  assert.deepEqual([...duplicateExtras([copy('a', 1, 'x'), copy('b', 2, 'x'), copy('c', 3, 'y'), copy('d', 4, null), copy('e', 5, null)]).keys()], ['b']);
   // Hosts that don't hash fall back to kind, size and bytes.
-  assert.deepEqual([...duplicateExtras([copy('a', 1, undefined), copy('b', 2, undefined)])], ['b']);
+  assert.deepEqual([...duplicateExtras([copy('a', 1, undefined), copy('b', 2, undefined)]).keys()], ['b']);
 });
 
 test('in a group of similar photos the favorite or the best one stays', () => {
@@ -78,7 +82,8 @@ test('in a group of similar photos the favorite or the best one stays', () => {
 test('similar photos become findings that say which photo stays', () => {
   const shot = (id: string, score: number) => asset({id, name: `${id}.HEIC`, bytes: 2_000_000, similar: 'g', score});
   const report = scan(photoHost(() => [shot('try1', 0.3), shot('best', 0.8), {...shot('try2', 0.1), local: false}]), loadRules(), {home: '/nonexistent', sources: ['photos'], now: NOW});
-  assert.deepEqual(report.findings.map(f => [f.rule_id, f.path, f.metadata['Fica']]), [['similar-photos', `${policy.PHOTO_PREFIX}try1`, 'best.HEIC']]);
+  assert.deepEqual(report.findings.map(f => [f.rule_id, f.path, f.metadata['Fica'], f.metadata.on_device]),
+    [['similar-photos', `${policy.PHOTO_PREFIX}try1`, 'best.HEIC', undefined], ['similar-photos', `${policy.PHOTO_PREFIX}try2`, 'best.HEIC', 'no']]);
 });
 
 test('photo items become findings with a photos:// path and a readable label', () => {
@@ -105,19 +110,28 @@ test('a denied photo library becomes a warning', () => {
   assert.deepEqual(report.warnings, ['cannot read photos: Sem acesso às Fotos.']);
 });
 
-test('photo findings need review, except copies and burst extras, which are automatic', () => {
+test('photo findings need review, except copies and burst extras; none is automatic', () => {
   const report = scan(photoHost(() => LIBRARY), loadRules(), {home: '/nonexistent', sources: ['photos'], now: NOW});
   for (const finding of report.findings) {
-    const auto = finding.rule_id === 'burst-extras';
-    assert.deepEqual(policy.policy(nodeHost, finding, '/h', '/app'), {allowed: true, review: !auto}, finding.rule_id);
-    assert.equal(policy.isAutomatic(finding, NOW), auto, finding.rule_id);
+    const safe = finding.rule_id === 'burst-extras';
+    assert.deepEqual(policy.policy(nodeHost, finding, '/h', '/app'), {allowed: true, review: !safe}, finding.rule_id);
+    assert.equal(policy.isAutomatic(finding, NOW), false, finding.rule_id);
   }
-  // Only as SAFE findings, and only from the photo library.
+  // Only SAFE findings skip review.
   const burst = report.findings.find(f => f.rule_id === 'burst-extras')!;
   assert.deepEqual(policy.policy(nodeHost, {...burst, severity: 'REVIEW'}, '/h', '/app'), {allowed: true, review: true});
-  assert.equal(policy.isAutomatic({...burst, severity: 'REVIEW'}, NOW), false);
-  assert.equal(policy.isAutomatic({...burst, path: '/h/photo.jpg'}, NOW), false);
   const forged = {...report.findings[0]!, rule_id: 'npm-cache', severity: 'SAFE' as const};
   assert.equal(policy.policy(nodeHost, forged, '/h', '/app').allowed, false);
   assert.equal(policy.policy(nodeHost, {...report.findings[0]!, severity: 'DANGER'}, '/h', '/app').allowed, false);
+});
+
+test('the host can mark photos it finds only in iCloud after the scan', () => {
+  const report = scan(photoHost(() => LIBRARY), loadRules(), {home: '/nonexistent', sources: ['photos'], now: NOW});
+  const video = `${policy.PHOTO_PREFIX}video-big`;
+  const marked = markOnlyInCloud(report, [video, '/not/a/photo']);
+  const finding = marked.findings.find(f => f.path === video)!;
+  assert.equal(finding.metadata.on_device, 'no');
+  assert.match(finding.metadata['Onde está']!, /Só no iCloud/);
+  assert.equal(marked.findings.filter(f => f.metadata.on_device === 'no').length, 1);
+  assert.equal(report.findings.find(f => f.path === video)!.metadata.on_device, undefined);
 });

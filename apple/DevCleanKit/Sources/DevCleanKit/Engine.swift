@@ -91,6 +91,11 @@ public final class Engine {
     try decode(invoke("companions", [host, json(finding)]))
   }
 
+  // `report` with the photos at `paths` marked as only in iCloud (core/scanner.ts markOnlyInCloud).
+  public func markOnlyInCloud(_ report: Report, paths: [String]) throws -> Report {
+    try decode(invoke("markOnlyInCloud", [json(report), json(paths)]))
+  }
+
   // `report` without `moved`, with fresh totals.
   public func remaining(_ report: Report, moved: [String]) throws -> Report {
     try decode(invoke("remaining", [json(report), json(moved)]))
