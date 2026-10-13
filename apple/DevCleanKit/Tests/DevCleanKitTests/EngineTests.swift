@@ -109,6 +109,17 @@ import Testing
     #expect(try denied.scan(ScanOptions(home: "/nonexistent", sources: ["photos"])).warnings == ["cannot read photos: Sem acesso às Fotos."])
   }
 
+  @Test func asciiArtComesFromTheEngine() throws {
+    let engine = try makeEngine()
+    #expect(try engine.banner().split(separator: "\n").count == 5)
+    #expect(try engine.spinner().count == 10)
+    var pose = CatPose()
+    pose.mouth = 2; pose.look = 1
+    let cat = try engine.cat("happy", pose), bust = try engine.cat("happy", pose, bust: true)
+    #expect(cat.split(separator: "\n", omittingEmptySubsequences: false).count > bust.split(separator: "\n", omittingEmptySubsequences: false).count)
+    #expect(try engine.cat("idle", CatPose()) != cat)
+  }
+
   @Test func engineErrorsSurfaceAsSwiftErrors() throws {
     #expect(throws: EngineError(message: "Seleção inválida.")) {try makeEngine().select([], indices: [])}
     #expect(throws: EngineError.self) {try Engine(script: "throw new Error('boom')")}

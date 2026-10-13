@@ -73,6 +73,7 @@ public struct Storage: Codable, Hashable, Sendable {
   public var totalBytes: Int
   public var freeBytes: Int
   public var purgeableBytes: Int?
+  public init(totalBytes: Int, freeBytes: Int, purgeableBytes: Int?) {self.totalBytes = totalBytes; self.freeBytes = freeBytes; self.purgeableBytes = purgeableBytes}
   enum CodingKeys: String, CodingKey {case totalBytes = "total_bytes", freeBytes = "free_bytes", purgeableBytes = "purgeable_bytes"}
 }
 

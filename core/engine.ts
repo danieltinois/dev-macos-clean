@@ -6,5 +6,7 @@ export {scan, DEFAULTS, SCHEMA_VERSION, type ScanOptions} from './scanner';
 export {buildTotals} from './analyzer';
 export * as policy from './policy';
 export {formatBytes, formatAgo} from './format';
+export {BANNER, SPINNER, bar} from './ascii';
+export {drawCat, portrait, type Mood, type Pose} from './cat';
 export type * from './host';
 export type * from './types';

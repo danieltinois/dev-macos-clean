@@ -37,6 +37,16 @@ public struct Decision: Decodable, Equatable, Sendable {
   public var auto: Bool
 }
 
+// Floco's pose (core/cat.ts Pose): animation time, broom angle, gaze, mouth,
+// ear flick, head tilt, hop and tail swish.
+public struct CatPose: Encodable, Equatable, Sendable {
+  public var t = 0.0, sweep = 0.0
+  public var look = 0, mouth = 0, tilt = 0
+  public var ear = false, hop = false
+  public var swish = 0.0
+  public init() {}
+}
+
 public final class Engine {
   public static let resourceName = "devclean-engine"
   private let context: JSContext
@@ -84,6 +94,14 @@ public final class Engine {
   // `report` without `moved`, with fresh totals.
   public func remaining(_ report: Report, moved: [String]) throws -> Report {
     try decode(invoke("remaining", [json(report), json(moved)]))
+  }
+
+  // ASCII art drawn by core/ascii.ts and core/cat.ts, the same code as the CLI.
+  public func banner() throws -> String {try invoke("banner", []).toString()}
+  public func spinner() throws -> [String] {try decode(invoke("spinner", []))}
+  // The whole cat (tail and broom), or the bust for the tutorial.
+  public func cat(_ mood: String, _ pose: CatPose, bust: Bool = false) throws -> String {
+    try invoke(bust ? "portrait" : "cat", [mood, json(pose)]).toString()
   }
 
   private func invoke(_ name: String, _ arguments: [Any]) throws -> JSValue {
