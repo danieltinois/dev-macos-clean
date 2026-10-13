@@ -1,0 +1,10 @@
+{
+  "id": "app-file-caches",
+  "name": "Caches e temporários de apps",
+  "category": "caches",
+  "severity": "REVIEW",
+  "reclaimable": true,
+  "description": "Arquivos em pastas de cache ou temporárias (Caches, tmp, Temp) dos apps que aparecem no app Arquivos, como em No Meu iPhone. O app costuma recriar o que precisar, mas confira antes.",
+  "files": {"folders": ["Caches", "caches", "Cache", "cache", "tmp", "Temp", "temp", "Temporary"]},
+  "rebuild": {"description": "O app que criou recria o cache quando precisar. Fica em Apagados no app Arquivos até sumir de vez."}
+}

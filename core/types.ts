@@ -24,8 +24,12 @@ export interface PhotoMatch {
 
 // Criteria a file from a picked folder must meet (all given ones). See rules.ts.
 export interface FileMatch {
-  // A folder with this name anywhere in the file's path, e.g. Downloads.
-  folder?: string;
+  // A folder with one of these names anywhere in the file's path, e.g. Downloads.
+  folders?: string[];
+  // File extensions, lowercase without the dot, e.g. zip.
+  extensions?: string[];
+  // `extra`: the same content as an older file (same SHA-256).
+  duplicate?: 'extra';
   min_bytes?: number;
   min_age_days?: number;
 }

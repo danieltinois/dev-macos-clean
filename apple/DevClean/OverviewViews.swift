@@ -38,7 +38,7 @@ struct StatsCard: View {
               bar: [(barBlocks(safe, of: total, width: 30), Theme.accent), (barBlocks(review, of: total, width: 30), Theme.amber)], duration: 0.8, note: model.count)
       divider
       article(title: "LIMPEZA SEGURA", dot: Theme.accent, value: safe, big: false,
-              bar: [(barBlocks(safe, of: total, width: 30), Theme.accent)], duration: 0.65, note: "Caches e dependências que se recriam")
+              bar: [(barBlocks(safe, of: total, width: 30), Theme.accent)], duration: 0.65, note: model.platform.safeNote)
       divider
       article(title: "REVISAR", dot: Theme.amber, value: review, big: false,
               bar: [(barBlocks(review, of: total, width: 30), Theme.amber)], duration: 0.65, note: "Conferir antes, ou limpar fora do app")

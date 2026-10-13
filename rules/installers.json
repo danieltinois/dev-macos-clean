@@ -1,0 +1,10 @@
+{
+  "id": "installers",
+  "name": "Instaladores e compactados",
+  "category": "installers",
+  "severity": "REVIEW",
+  "reclaimable": false,
+  "description": "Arquivos .zip, .rar, .7z, .ipa, .dmg, .pkg, .apk e parecidos. Depois de extraídos ou instalados, quase nunca são abertos de novo.",
+  "files": {"extensions": ["zip", "rar", "7z", "ipa", "dmg", "pkg", "apk", "iso", "tar", "gz", "tgz", "xip"]},
+  "rebuild": {"description": "Não se recria; baixe de novo se precisar. Fica em Apagados no app Arquivos até sumir de vez."}
+}

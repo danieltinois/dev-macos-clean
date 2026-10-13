@@ -74,7 +74,8 @@ import Testing
 
   @Test func theIPhoneTourTalksAboutTheIPhone() {
     let steps = Tour.steps(for: .ios), text = steps.map {$0.text(scanned: true)}.joined(separator: " ")
-    #expect(!steps.contains {$0.targets.contains(.auto)} && steps.contains {$0.targets.contains(.addFolder)})
+    #expect(steps.contains {$0.targets.contains(.auto)} && steps.contains {$0.targets.contains(.addFolder)})
+    #expect(Platform.ios.automatic && !Platform.ios.staleProjects && Platform.mac.staleProjects)
     #expect(text.contains("iPhone") && !text.contains("Mac") && !text.contains("Finder") && !text.contains("Lixeira"))
     #expect(Tour.steps(for: .mac).contains {$0.targets.contains(.auto)})
   }

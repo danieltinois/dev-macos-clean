@@ -161,7 +161,7 @@ struct Heading: View {
         Button(model.autoBytes > 0 ? "Limpeza automática · \(Labels.bytes(model.autoBytes))" : "Limpeza automática") {Task {await model.cleanAutomatically()}}
           .devButton(.primary, minHeight: height, fill: compact)
           .disabled(model.busy || !model.hasAuto)
-          .help("Envia à Lixeira caches que se recriam sozinhos e dependências de projetos parados há 90+ dias")
+          .help(model.platform.autoHelp)
           .tourTarget(.auto, in: model)
       }
     }
@@ -206,7 +206,7 @@ struct FoldersBar: View {
   var body: some View {
     let chips = FlowLayout(spacing: 6) {
       if model.folderLabels.isEmpty {
-        Text("Nenhuma pasta. Adicione Downloads ou o iCloud Drive para eu olhar também.").font(Theme.sans(11)).foregroundStyle(Theme.muted)
+        Text("Nenhuma pasta. Adicione No Meu iPhone e o iCloud Drive para eu varrer tudo o que o iOS deixa, inclusive pastas de outros apps.").font(Theme.sans(11)).foregroundStyle(Theme.muted)
       }
       ForEach(Array(model.folderLabels.enumerated()), id: \.offset) {index, label in
         HStack(spacing: 4) {

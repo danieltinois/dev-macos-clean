@@ -5,6 +5,7 @@
 // iOS only, so the Mac app doesn't link Photos.
 #if os(iOS)
 import AVFoundation
+import CryptoKit
 import Foundation
 import Photos
 import UIKit
@@ -39,7 +40,7 @@ public enum PhotoLibrary {
     // PhotoKit hands out autoreleased objects; draining them per item keeps large
     // libraries within an iPhone's memory limit (the system kills the app otherwise).
     // Reading each item's files is slow on older iPhones, so it reports progress too.
-    return assets.enumerated().map {index, asset in
+    var items = assets.enumerated().map {index, asset in
       if index % 200 == 0 {progress("Medindo fotos e vídeos… \(index) de \(assets.count)")}
       return autoreleasepool {
         var item = describe(asset, cloud: cloud)
@@ -49,6 +50,46 @@ public enum PhotoLibrary {
         return item
       }
     }
+    hashPossibleCopies(&items, assets, progress: progress)
+    return items
+  }
+
+  // Items that match another in kind, pixel size, duration and bytes might be
+  // copies: hash their content, so only identical bytes count (automatic cleanup
+  // takes copies). Only what is on the device; nothing is downloaded.
+  private static func hashPossibleCopies(_ items: inout [[String: Any]], _ assets: [PHAsset], progress: @Sendable (String) -> Void) {
+    var groups: [String: [Int]] = [:]
+    for (index, item) in items.enumerated() {
+      guard let bytes = item["bytes"] as? Double, item["local"] as? Bool != false, let width = item["width"] as? Int, width > 0 else {continue}
+      groups["\(item["media"] ?? "") \(width)x\(item["height"] ?? 0) \(item["duration_ms"] ?? 0) \(bytes)", default: []].append(index)
+    }
+    let candidates = groups.values.filter {$0.count > 1}.flatMap {$0}
+    for (done, index) in candidates.enumerated() {
+      if done % 20 == 0 {progress("Conferindo cópias… \(done) de \(candidates.count)")}
+      items[index]["digest"] = autoreleasepool {digest(assets[index])} ?? NSNull()
+    }
+  }
+
+  // SHA-256 of the item's original, read from the device; nil when it can't be read.
+  private static func digest(_ asset: PHAsset) -> String? {
+    let resources = PHAssetResource.assetResources(for: asset)
+    guard let main = resources.first(where: {[.photo, .video].contains($0.type)}) ?? resources.first else {return nil}
+    let options = PHAssetResourceRequestOptions()
+    options.isNetworkAccessAllowed = false
+    let hasher = Hasher256(), done = DispatchSemaphore(value: 0)
+    PHAssetResourceManager.default().requestData(for: main, options: options) {hasher.update($0)} completionHandler: {error in
+      hasher.failed = error != nil
+      done.signal()
+    }
+    done.wait()
+    return hasher.failed ? nil : hasher.finish()
+  }
+
+  private final class Hasher256: @unchecked Sendable {
+    private var sha = SHA256()
+    var failed = false
+    func update(_ data: Data) {sha.update(data: data)}
+    func finish() -> String {sha.finalize().map {String(format: "%02x", $0)}.joined()}
   }
 
   // Camera photos taken in a row (no screenshots, no bursts: those have their own

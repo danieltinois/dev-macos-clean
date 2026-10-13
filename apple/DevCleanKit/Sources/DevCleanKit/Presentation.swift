@@ -18,8 +18,11 @@ public struct Platform: Sendable, Equatable {
   public let freeSpace, catFreeSpace: String
   // The details button (Finder on the Mac, Quick Look on the iPhone) and its loading text.
   public let reveal, opening: String
-  // Automatic cleanup and the stale-projects shortcut.
+  // Automatic cleanup (with its tooltip and the summary's note on what is safe),
+  // and the stale-projects shortcut (Mac only).
   public let automatic: Bool
+  public let autoHelp, safeNote: String
+  public let staleProjects: Bool
   // Folders picked in the Files app (the iPhone can't see the disk otherwise).
   public let folders: Bool
   // The disk panel: its title, and notes for findings and purgeable space.
@@ -32,7 +35,9 @@ public struct Platform: Sendable, Equatable {
     footer: "Limpeza via Lixeira · restauração pelo Finder.",
     send: "Enviar à Lixeira", toTrash: "para a Lixeira", inTrash: "na Lixeira", cheer: "Pra Lixeira!",
     freeSpace: "Esvazie a Lixeira para liberar espaço.", catFreeSpace: "Agora é só esvaziar a Lixeira.",
-    reveal: "Mostrar no Finder", opening: "Abrindo no Finder…", automatic: true, folders: false,
+    reveal: "Mostrar no Finder", opening: "Abrindo no Finder…", automatic: true,
+    autoHelp: "Envia à Lixeira caches que se recriam sozinhos e dependências de projetos parados há 90+ dias",
+    safeNote: "Caches e dependências que se recriam", staleProjects: true, folders: false,
     disk: "DISCO DO MAC", foundNote: "Fica livre depois de esvaziar a Lixeira", purgeableNote: "Caches e cópias que o macOS apaga sozinho quando falta espaço",
     scanning: "Varrendo caches e node_modules…", lookWhat: "caches, node_modules e outras tralhas de dev")
 
@@ -42,7 +47,9 @@ public struct Platform: Sendable, Equatable {
     footer: "Limpeza via Apagados · recuperável nos apps Fotos e Arquivos.",
     send: "Enviar para Apagados", toTrash: "para Apagados", inTrash: "em Apagados", cheer: "Pra Apagados!",
     freeSpace: "Para liberar espaço já, apague de vez em Apagados, no app Fotos ou Arquivos.", catFreeSpace: "O espaço volta quando Apagados esvaziar.",
-    reveal: "Abrir para conferir", opening: "Abrindo… Vídeos grandes podem levar alguns segundos.", automatic: false, folders: true,
+    reveal: "Abrir para conferir", opening: "Abrindo… Vídeos grandes podem levar alguns segundos.", automatic: true,
+    autoHelp: "Envia para Apagados as cópias idênticas e as fotos extras de rajadas: sempre sobra uma",
+    safeNote: "Cópias idênticas e extras de rajadas: sempre sobra uma", staleProjects: false, folders: true,
     disk: "ARMAZENAMENTO DO IPHONE", foundNote: "Fica livre quando Apagados esvaziar", purgeableNote: "Caches e originais do iCloud que o iOS apaga sozinho quando falta espaço",
     scanning: "Varrendo fotos e vídeos…", lookWhat: "vídeos grandes, fotos repetidas, capturas de tela velhas e outras tralhas")
 
@@ -60,6 +67,7 @@ public enum Labels {
     "node": "Node.js", "xcode": "Xcode", "android": "Android", "python": "Python", "rust": "Rust", "go": "Go", "java": "Java", "flutter": "Flutter",
     "docker": "Docker", "ide": "IDEs", "macos": "macOS", "downloads": "Downloads", "logs": "Logs", "homebrew": "Homebrew", "videos": "Vídeos",
     "screenshots": "Capturas", "photos": "Fotos", "duplicates": "Repetidas", "similar": "Parecidas", "files": "Arquivos",
+    "caches": "Caches", "installers": "Instaladores",
   ]
   public static func category(_ slug: String) -> String {categories[slug] ?? slug}
   public static func risk(_ severity: Severity) -> String {
@@ -218,7 +226,7 @@ public enum Tour {
       TourStep([.scan], "Esse botão vasculha o \(device) atrás de \(look). Assim que a gente terminar, eu faço a primeira análise.",
                afterScan: "Aqui eu vasculho o \(device) atrás de \(look). Eu já faço isso sozinho quando o app abre."),
     ]
-    if platform.folders {steps.append(TourStep([.addFolder], "Quer que eu olhe o app Arquivos também? Escolhe uma pasta aqui, tipo Downloads ou o iCloud Drive inteiro."))}
+    if platform.folders {steps.append(TourStep([.addFolder], "Quer que eu varra o app Arquivos também? Escolhe No Meu iPhone e o iCloud Drive aqui: eu olho até as pastas de outros apps."))}
     steps += [
       TourStep([.stats], "O resumo: quanto eu achei, quanto dá pra limpar sem medo e quanto é melhor você conferir antes."),
       TourStep([.disk, .stats], "O espaço do \(device): o que está em uso, o que eu achei, o que o sistema libera sozinho e quanto está livre."),
@@ -226,13 +234,14 @@ public enum Tour {
       TourStep([.filters], "Também dá pra buscar por nome ou caminho, filtrar por risco e mudar a ordem."),
       TourStep([.firstRow, .list], "Cada linha é um achado: ferramenta, caminho, risco e tamanho. Clica pra ver detalhes e como recriar. Cadeado quer dizer que eu não deixo limpar, e eu explico o porquê."),
     ]
-    steps += platform.automatic ? [
+    steps += platform.id == .mac ? [
       TourStep([.quick], "\"Selecionar tudo\" pega só o que está nos filtros. \"Projetos parados\" pega dependências de projetos sem mexer há 90+ dias."),
       TourStep([.clean], "Escolheu? Manda pra Lixeira. Eu sempre peço confirmação, e dá pra restaurar pelo Finder."),
       TourStep([.auto], "Com pressa? A limpeza automática leva só caches que se recriam sozinhos e dependências de projetos parados."),
     ] : [
-      TourStep([.quick], "\"Selecionar tudo\" pega só o que está nos filtros. Aqui nada é automático: foto é sua, você escolhe."),
-      TourStep([.clean], "Escolheu? Manda pra Apagados. O iPhone pede confirmação, e dá pra recuperar no app Fotos por 30 dias."),
+      TourStep([.quick], "\"Selecionar tudo\" pega só o que está nos filtros. O resto é com você: foto é sua, você escolhe."),
+      TourStep([.clean], "Escolheu? Manda pra Apagados. O iPhone pede confirmação, e dá pra recuperar nos apps Fotos e Arquivos."),
+      TourStep([.auto], "Com pressa? A limpeza automática leva só cópias idênticas e extras de rajadas. Sempre sobra uma de cada."),
     ]
     steps += [
       TourStep([.mascot], "E aqui é o meu cantinho. Quando a gente terminar eu volto pra cá, fico dando dicas e aceito carinho."),
