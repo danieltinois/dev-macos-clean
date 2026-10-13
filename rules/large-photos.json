@@ -1,0 +1,10 @@
+{
+  "id": "large-photos",
+  "name": "Fotos muito pesadas",
+  "category": "photos",
+  "severity": "REVIEW",
+  "reclaimable": false,
+  "description": "Fotos de 15 MB ou mais, como ProRAW, panoramas e imagens de 48 MP. Uma foto comum ocupa de 2 a 5 MB.",
+  "photos": {"media": "image", "min_bytes": 15728640},
+  "rebuild": {"description": "Não se recria. Fica 30 dias em Fotos › Apagados antes de sumir de vez."}
+}

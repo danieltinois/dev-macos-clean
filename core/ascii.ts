@@ -1,4 +1,4 @@
-// ASCII art shared by the CLI and the desktop renderer. Pure strings, no I/O.
+// ASCII art shared by the CLI and the app UI. Pure strings, no I/O.
 
 // "DEVCLEAN" in the figlet Standard font.
 export const BANNER = String.raw`

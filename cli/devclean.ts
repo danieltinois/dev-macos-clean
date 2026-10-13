@@ -65,6 +65,7 @@ export function renderHuman(report: Report): string {
     lines.push('', heading('By risk'), ...bars(SEVERITIES.map(severity => [`${severity}:`, report.totals.by_severity[severity] ?? 0])));
   }
   lines.push('', LINE, `Detected: ${formatBytes(report.totals.bytes)} (${report.totals.findings} finding(s))`);
+  if (report.storage) lines.push(`Disk:     ${formatBytes(report.storage.free_bytes)} free of ${formatBytes(report.storage.total_bytes)}`);
   if (report.warnings.length) lines.push('', 'Warnings:', ...report.warnings.map(warning => `  - ${warning}`));
   const safe = report.totals.by_severity.SAFE ?? 0;
   lines.push('', report.findings.length

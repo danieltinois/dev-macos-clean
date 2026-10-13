@@ -1,0 +1,281 @@
+import {BANNER, SPINNER} from '../core/ascii';
+import {createMascot} from './mascot';
+import {countUp, growBar, growStack, leave, reduced, sweep, typeIn} from './motion';
+import {diskParts} from './disk';
+import {currentPlatform} from './platform';
+import {pick, visible, where, type Filters, type Indexed} from './selection';
+import {createTutorial, stepsFor, tourSeen, CAT_NAME} from './tutorial';
+import type {CleanupFinding, CleanupReport, DevcleanBridge} from './bridge';
+
+declare global {interface Window {devclean: DevcleanBridge}}
+
+const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
+const value = (id: string) => $<HTMLInputElement | HTMLSelectElement>(id).value;
+const button = (id: string) => $<HTMLButtonElement>(id);
+let report: CleanupReport | null = null, activeIndex: number | null = null, busy = false;
+const selected = new Set<number>();
+const names: Record<string, string> = {node:'Node.js', xcode:'Xcode', android:'Android', python:'Python', rust:'Rust', go:'Go', java:'Java', flutter:'Flutter', docker:'Docker', ide:'IDEs', macos:'macOS', downloads:'Downloads', logs:'Logs', homebrew:'Homebrew', videos:'Vídeos', screenshots:'Capturas', photos:'Fotos', duplicates:'Repetidas', similar:'Parecidas'};
+const platform = currentPlatform(window.devclean.platform);
+function ageDays(f: CleanupFinding) {const t = Date.parse(f.last_modified ?? '');return Number.isNaN(t) ? null : Math.floor((Date.now()-t)/86400000);}
+function ago(days: number | null) {if (days === null) return '';if (days < 1) return 'hoje';if (days < 31) return `há ${days} dia(s)`;if (days < 365) return `há ${Math.floor(days/30)} mês(es)`;return `há ${(days/365).toLocaleString('pt-BR',{maximumFractionDigits:1})} ano(s)`;}
+// auto_clean comes from the native shell, which owns the cleanup policy.
+const isStale = (f: CleanupFinding) => f.auto_clean && Boolean(f.metadata?.project);
+// "Safe" is what may go to the Trash without review; everything else needs a look.
+const isSafe = (f: CleanupFinding) => f.cleanup_allowed && !f.cleanup_review;
+const sum = (items: CleanupFinding[]) => items.reduce((total,f)=>total+f.size_bytes,0);
+const risks = {SAFE:'Baixo risco', REVIEW:'Revisar', DANGER:'Alto risco'};
+function bytes(n: number) {if (n < 1) return '0 B'; const units = ['B','KB','MB','GB','TB'];const i = Math.min(4,Math.floor(Math.log(n)/Math.log(1024)));return `${(n/1024**i).toLocaleString('pt-BR',{maximumFractionDigits:i ? 1 : 0})} ${units[i]}`;}
+function node<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string, cls?: string) {const el = document.createElement(tag);if (text !== undefined) el.textContent = text;if (cls) el.className = cls;return el;}
+function status(text: string, error=false) {stopSpinner();$('status').textContent=text;$('status').className=error?'error':'';}
+const filters = (): Filters => ({query: value('search'), category: value('category'), severity: value('severity')});
+const filtered = () => Boolean(value('search') || value('category') || value('severity'));
+const shown = () => report ? visible(report.findings, filters()) : [];
+const cat = createMascot(button('cat'), $('cat-art'), $('cat-says'), {tips});
+// Things the cat brings up between tasks, based on the last report.
+// What the shell can't do or says differently (see platform.ts).
+$('mode').textContent = platform.mode;$('scope').textContent = platform.scope;$('scope-note').textContent = platform.scopeNote;
+$('timestamp').textContent = platform.footer;$('clean').textContent = platform.send;
+$('reveal').textContent = platform.reveal;
+for (const id of ['auto', 'select-stale']) $(id).hidden = !platform.automatic;
+document.documentElement.dataset.platform = platform.id;$('disk-title').textContent = platform.disk;
+const tour = createTutorial({
+  steps: stepsFor(platform),
+  context: () => ({scanned: Boolean(report)}),
+  onStart: () => cat.set('idle', 'Fui ali te mostrar o app!'),
+  // On first launch the tour runs before anything else; the first scan starts when it ends.
+  onEnd: () => {
+    if (!report && !busy) $('scan').click();
+    else cat.react(`Voltei! Qualquer coisa, chama o ${CAT_NAME} no Tutorial.`);
+  },
+});
+$('tour-open').onclick = () => tour.start();
+function tips(): string[] {
+  const list = ['Clique numa ferramenta no gráfico para filtrar.', 'Esqueceu como funciona? O botão Tutorial chama o tour.', platform.freeSpace, 'Psiu… pode me fazer carinho, é só clicar.'];
+  if (!report) return list;
+  const [top, size] = Object.entries(report.totals.by_category).sort(([, a], [, b]) => b - a)[0] ?? [];
+  if (top) list.push(`${names[top] || top} ocupa ${bytes(size!)}. Vale uma olhada!`);
+  const auto = sum(report.findings.filter(f => f.auto_clean));
+  if (auto) list.push(`A limpeza automática libera ${bytes(auto)} com um clique.`);
+  const stale = report.findings.filter(isStale);
+  if (stale.length) list.push(`${stale.length} projeto(s) parado(s) há 90+ dias: ${bytes(sum(stale))} em dependências.`);
+  return list;
+}
+
+// Braille spinner on the scan button and status line, plus a ░▒▓█ sweep in the chart.
+let spinner: ReturnType<typeof setInterval> | null = null, stopSweep: (() => void) | null = null, spinnerText = '';
+function startSpinner(label: string, text: string) {
+  stopSpinner();
+  let frame = 0;spinnerText = text;
+  const draw = () => {const f = SPINNER[frame++ % SPINNER.length];$('scan').textContent=`${f} ${label}`;$('status').textContent=`${f} ${spinnerText}`;$('status').className='';};
+  draw();
+  if (!reduced()) spinner = setInterval(draw, 80);
+  const scanning = node('pre', undefined, 'sweep');
+  $('breakdown').replaceChildren(scanning);$('breakdown-hint').textContent='analisando…';
+  stopSweep = sweep(scanning, 6, 30);
+}
+function stopSpinner() {if (spinner) clearInterval(spinner);spinner = null;spinnerText = '';stopSweep?.();stopSweep = null;}
+// Long steps (comparing similar photos on the iPhone) report how far they are.
+window.addEventListener('devclean-progress', event => {
+  if (!spinnerText) return;
+  spinnerText = String((event as CustomEvent).detail);
+  if (!spinner) $('status').textContent = spinnerText;
+});
+
+// One clickable block-chart row per tool, largest first, on a shared scale. Clicking filters the results.
+function breakdown() {
+  if (!report) return;
+  const entries = Object.entries(report.totals.by_category).filter(([, size]) => size > 0).sort(([, a], [, b]) => b - a);
+  const max = entries[0]?.[1] ?? 0, active = value('category');
+  $('breakdown-hint').textContent = active ? '× limpar filtro' : 'clique para filtrar';
+  if (!entries.length) {$('breakdown').replaceChildren(node('p', 'Nada encontrado.', 'muted'));return;}
+  $('breakdown').replaceChildren(...entries.map(([c, size], i) => {
+    const row = node('button', undefined, `bar-row${c === active ? ' active' : ''}`), chart = node('span', undefined, 'bar-chart');
+    row.type = 'button';row.setAttribute('aria-pressed', String(c === active));row.title = `Mostrar só ${names[c] || c}`;
+    row.append(node('span', names[c] || c, 'bar-label'), chart, node('span', bytes(size), 'bar-size'));
+    row.onclick = () => {$<HTMLSelectElement>('category').value = c === active ? '' : c;update();cat.react(c === active ? 'Mostrando tudo de novo.' : `Só ${names[c] || c} agora: ${bytes(size)}.`);};
+    growBar(chart, size, max, 26, 'bar-fill', i * 40);
+    return row;
+  }));
+}
+
+function render(animate = false) {
+  if (!report) return;
+  const items = shown();
+  items.sort((a,b)=> value('sort')==='name' ? a.name.localeCompare(b.name) : value('sort')==='date' ? (Date.parse(b.last_modified ?? '')||0)-(Date.parse(a.last_modified ?? '')||0) : b.size_bytes-a.size_bytes);
+  $('visible-count').textContent = `${items.length} / ${report.findings.length}`;
+  $('list').classList.toggle('animate', animate && !reduced());
+  $('list').replaceChildren();
+  if (!items.length) {$('list').append(node('div', report.findings.length ? 'Nenhum resultado corresponde aos filtros.' : 'Nenhum artefato encontrado nesta análise.', 'empty'));return;}
+  items.forEach((f, i) => {
+    const row = node('div', undefined,'row');row.dataset.index=String(f.index);row.style.setProperty('--i', String(Math.min(i, 24)));
+    const check = node('input');check.type='checkbox';check.dataset.index=String(f.index);check.checked=selected.has(f.index);check.disabled=busy || !f.cleanup_allowed;
+    check.setAttribute('aria-label',`Selecionar ${where(f)}`);check.title=f.cleanup_reason || platform.send;
+    check.onchange=()=>{check.checked ? selected.add(f.index) : selected.delete(f.index);row.classList.toggle('selected', check.checked);selection();};
+    row.classList.toggle('selected', check.checked);
+    const open = node('button', undefined, 'item-details');open.type='button';open.setAttribute('aria-label',`Detalhes de ${f.name}, ${where(f)}`);
+    const info = node('div',undefined,'row-info');const age=ageDays(f);info.append(node('strong',f.name),node('small',age===null?where(f):`${ago(age)} · ${where(f)}`));
+    if (!f.cleanup_allowed && f.cleanup_reason) info.append(node('small',`🔒 ${f.cleanup_reason}`,'blocked'));
+    open.append(node('span',names[f.category] || f.category,'tool'), info,node('span',risks[f.severity],`badge ${f.severity.toLowerCase()}`),node('span',`${f.size_complete?'':'≥ '}${bytes(f.size_bytes)}`,'size'),node('span','›','chevron'));
+    open.onclick = ()=>details(f);row.append(check,open);$('list').append(row);
+  });
+}
+// Filters changed: re-render the list, the chart highlight and the selection buttons.
+function update() {render();breakdown();selection();}
+
+function details(f: Indexed) {
+  activeIndex=f.index;$('detail-title').textContent=f.name;
+  const body=$('detail-body');body.replaceChildren(node('p',f.description));
+  for (const [label,text] of [[f.metadata.label ? 'Arquivo' : 'Caminho',where(f)],['Tamanho e classificação',`${f.size_complete?'':'Medição parcial: pelo menos '}${bytes(f.size_bytes)} · ${risks[f.severity]} · ${f.reclaimable?'Recriável':'Pode conter dados locais'}`],['Última modificação',f.last_modified ? new Date(f.last_modified).toLocaleString('pt-BR') : 'Indisponível'],['Como recriar',f.rebuild?.description || 'Sem instruções de reconstrução.']] as const) body.append(node('h3',label),node('p',text));
+  if(f.rebuild?.commands?.length) body.append(node('pre',f.rebuild.commands.join('\n')));
+  body.append(node('h3','Limpeza'),node('p',!f.cleanup_allowed ? f.cleanup_reason : f.auto_clean ? 'Incluído na limpeza automática.' : f.cleanup_review ? `Pode ir ${platform.toTrash} se você selecionar. Confira antes: pode conter dados que não voltam sozinhos.` : `Pode ir ${platform.toTrash} se você selecionar.`));
+  for (const [key,text] of Object.entries(f.metadata)) if (key !== 'label') body.append(node('h3',key),node('p',text));
+  $<HTMLDialogElement>('details').showModal();
+}
+$('close').onclick=()=>$<HTMLDialogElement>('details').close();
+// On the iPhone this may download the item from iCloud first, so a loading layer
+// covers the details. It only shows when opening takes a moment: the Finder is instant.
+$('opening-text').textContent = platform.opening;
+$('reveal').onclick=async()=>{
+  let frame = 0;
+  const spin = () => {$('opening-spinner').textContent = SPINNER[frame++ % SPINNER.length]!;};
+  const show = setTimeout(() => {spin();$('opening').hidden = false;}, 200), timer = reduced() ? null : setInterval(spin, 80);
+  button('reveal').disabled=true;
+  try{await window.devclean.reveal(activeIndex!);}catch(e){status((e as Error).message,true);$<HTMLDialogElement>('details').close();}
+  finally{clearTimeout(show);if (timer) clearInterval(timer);$('opening').hidden = true;button('reveal').disabled=false;}
+};
+for(const id of ['search','category','severity','sort']) $(id).addEventListener(id==='search'?'input':'change',update);
+$('export').onclick=async()=>{try{if(await window.devclean.exportReport()) status('Relatório exportado.');}catch(e){status((e as Error).message,true);}};
+$('scan').onclick=async()=>{
+  setBusy(true);startSpinner('Analisando…','Analisando arquivos…');cat.set('scanning',platform.scanning);
+  try {
+    report=await window.devclean.scan();selected.clear();$('count').textContent=`${report.totals.findings} artefatos encontrados`;
+    $('category').replaceChildren(new Option('Todas as ferramentas',''));
+    for (const c of Object.keys(report.totals.by_category).sort()) $('category').append(new Option(names[c]||c,c));
+    $('warnings').replaceChildren(...report.warnings.map(w=>node('p',w)));
+    $('timestamp').textContent=`Última análise: ${new Date(report.scanned_at).toLocaleString('pt-BR')}`;
+    stopSpinner();summary();render(true);
+    const safe=sum(report.findings.filter(isSafe));
+    status(safe ? `Análise concluída · ${bytes(safe)} podem ir ${platform.toTrash} com segurança` : 'Análise concluída');
+    if (safe) cat.set('done',`Achei ${bytes(safe)} para limpar sem medo!`);
+    else if (report.findings.length) cat.set('done','Tudo conferido. Veja os itens para revisar.');
+    else cat.set('empty',`Nada para varrer. Seu ${platform.device} está em dia!`);
+  } catch(e){status((e as Error).message,true);breakdown();cat.set('error','Ops! A análise não terminou.');} finally {stopSpinner();setBusy(false);$('scan').textContent='Analisar novamente';}
+};
+
+// Quick selections act on what the filters show; automatic cleanup always covers the whole report.
+function selectWhere(predicate: (f: CleanupFinding) => boolean, items: Indexed[] = shown()) {
+  selected.clear();
+  for (const index of pick(items, predicate)) selected.add(index);
+  render();selection();
+}
+// The cat comments on quick selections.
+function selectAndReact(predicate: (f: CleanupFinding) => boolean) {
+  selectWhere(predicate);
+  if (!selected.size) return cat.react('Seleção limpa.');
+  const total = [...selected].reduce((sum, i) => sum + (report?.findings[i]?.size_bytes || 0), 0);
+  const review = [...selected].filter(i => report?.findings[i]?.cleanup_review).length;
+  cat.react(`${selected.size} item(ns), ${bytes(total)}.${review ? ` ${review} para revisar, confere antes!` : ' Pode mandar!'}`);
+}
+$('select-safe').onclick=()=>selectAndReact(()=>true);
+$('select-stale').onclick=()=>selectAndReact(isStale);
+$('select-none').onclick=()=>selectAndReact(()=>false);
+// The volume: everything else in use, what DevClean found, purgeable and free space.
+function disk() {
+  const storage = report?.storage;
+  $('disk').hidden = !storage;
+  if (!report || !storage) return;
+  const d = diskParts(storage, report.totals.bytes), percent = (n: number) => `${Math.round(n / d.total * 100)}%`;
+  $('disk-total').textContent = `${bytes(d.total)} no total`;
+  growStack($('disk-bar'), [[d.other, 'bar-used'], [d.found, 'bar-fill'], [d.purgeable ?? 0, 'bar-amber']], d.total, 30);
+  const rows: [string, string, string, string][] = [
+    ['bar-used', 'Em uso', bytes(d.other), 'Sistema, apps e seus arquivos'],
+    ['bar-fill', 'DevClean achou', bytes(d.found), platform.foundNote],
+    ...d.purgeable === null ? [] : [['bar-amber', 'Liberável pelo sistema', bytes(d.purgeable), platform.purgeableNote] as [string, string, string, string]],
+    ['bar-empty', 'Livre agora', `${bytes(d.free)} · ${percent(d.free)}`, `Até ${bytes(d.freeAfter)} se você limpar tudo`],
+  ];
+  $('disk-detail').replaceChildren(...rows.map(([cls, label, size, note]) => {
+    const row = node('div', undefined, 'disk-row');
+    row.append(node('span', '■', `disk-key ${cls}`), node('span', label, 'disk-label'), node('strong', size), node('small', note));
+    return row;
+  }));
+}
+
+// Folders picked in the Files app (iPhone): chips with a remove button, then a rescan.
+const bridge = window.devclean;
+function folders(labels: string[]) {
+  $('folder-list').replaceChildren(...labels.length ? labels.map((label, index) => {
+    const chip = node('span', label, 'chip'), remove = node('button', '×');
+    remove.type = 'button';remove.disabled = busy;remove.setAttribute('aria-label', `Remover a pasta ${label}`);
+    remove.onclick = () => changeFolders(() => bridge.removeFolder!(index));
+    chip.append(remove);
+    return chip;
+  }) : [node('small', 'Nenhuma pasta. Adicione Downloads ou o iCloud Drive para eu olhar também.')]);
+}
+async function changeFolders(change: () => Promise<string[]>) {
+  if (busy) return;
+  try {const before = $('folder-list').querySelectorAll('.chip').length, labels = await change();folders(labels);if (labels.length !== before) $('scan').click();}
+  catch (e) {status((e as Error).message, true);}
+}
+if (platform.folders && bridge.folders) {
+  $('folders').hidden = false;
+  bridge.folders().then(folders, () => folders([]));
+  $('add-folder').onclick = () => changeFolders(() => bridge.addFolder!());
+}
+
+function summary() {
+  if (!report) return;
+  disk();
+  const total=report.totals.bytes, safe=sum(report.findings.filter(isSafe)), review=total-safe;
+  countUp($('total'),total,bytes);countUp($('safe'),safe,bytes);countUp($('review'),review,bytes);
+  growStack($('total-bar'),[[safe,'bar-fill'],[review,'bar-amber']],total,30);
+  growBar($('safe-bar'),safe,total,30);growBar($('review-bar'),review,total,30,'bar-amber');
+  breakdown();
+  const auto=report.findings.filter(f=>f.auto_clean);
+  $('auto').textContent=auto.length?`Limpeza automática · ${bytes(sum(auto))}`:'Limpeza automática';
+}
+function selection() {
+  const items = shown(), inView = new Set(items.map(f => f.index));
+  const total = [...selected].reduce((sum,i)=>sum+(report?.findings[i]?.size_bytes||0),0);
+  const review = [...selected].filter(i=>report?.findings[i]?.cleanup_review).length;
+  const hidden = [...selected].filter(i=>!inView.has(i)).length;
+  $('selection').textContent = selected.size ? `${selected.size} selecionado(s) · ${bytes(total)}${review?` · ${review} para revisar`:''}${hidden?` · ${hidden} fora do filtro`:''}` : 'Selecione itens para limpar';
+  button('clean').disabled = busy || !selected.size;
+  $('clean').classList.toggle('ready', selected.size > 0);
+  const stale = items.filter(f=>f.cleanup_allowed && isStale(f));
+  $('select-safe').textContent = filtered() ? 'Selecionar filtrados' : 'Selecionar tudo';
+  $('select-stale').textContent=`Projetos parados (90+ dias)${stale.length?` · ${bytes(sum(stale))}`:''}`;
+  button('select-safe').disabled = busy || !items.some(f=>f.cleanup_allowed);
+  button('select-stale').disabled = busy || !stale.length;
+  button('select-none').disabled = busy || !selected.size;
+  button('auto').disabled = busy || !report?.findings.some(f=>f.auto_clean);
+}
+function setBusy(value: boolean) {
+  busy=value;button('scan').disabled=value;button('export').disabled=value||!report;button('tour-open').disabled=value;button('add-folder').disabled=value;
+  for(const remove of $('folder-list').querySelectorAll('button')) remove.disabled=value;
+  document.body.classList.toggle('busy', value);
+  for(const input of $('list').querySelectorAll('input')) input.disabled=value || !report?.findings[Number(input.dataset.index)]?.cleanup_allowed;
+  selection();
+}
+$('clean').onclick=()=>clean(false);
+$('auto').onclick=()=>{if (report) {selectWhere(f=>f.auto_clean, visible(report.findings, {query:'', category:'', severity:''}));clean(true);}};
+async function clean(automatic: boolean) {
+  setBusy(true);status('Validando seleção…');cat.set('idle','Confere a lista antes de confirmar.');
+  try {
+    const result=await window.devclean.cleanup([...selected],report!.cleanup_token,automatic);
+    if(result.canceled) {status('Limpeza cancelada');cat.set('idle','Tudo bem, nada foi movido.');return;}
+    cat.set('cleaning',platform.cheer);
+    const moved = new Set(result.moved.map(f=>f.path));
+    await leave([...$('list').querySelectorAll<HTMLElement>('.row')].filter(row=>moved.has(report!.findings[Number(row.dataset.index)]?.path ?? '')));
+    report=result.report;selected.clear();
+    summary();render();$('count').textContent=`${report.totals.findings} artefatos restantes`;
+    $('warnings').replaceChildren(...report.warnings.map(w=>node('p',w)),...result.errors.map(e=>node('p',`${e.path}: ${e.message}`)));
+    const movedBytes=result.moved.reduce((sum,f)=>sum+f.size_bytes,0);
+    status(`${result.moved.length} item(ns) ${platform.inTrash} · ${bytes(movedBytes)}. ${platform.freeSpace}${result.errors.length?' Alguns itens falharam.':''}`, Boolean(result.errors.length));
+    if (result.errors.length) cat.set('error',`${result.errors.length} item(ns) não saíram. Veja os avisos.`);
+    else cat.set('done',`Prontinho! ${bytes(movedBytes)} a menos. ${platform.catFreeSpace}`);
+  } catch(e){status((e as Error).message,true);cat.set('error','Ops! Não consegui limpar.');} finally {setBusy(false);}
+}
+typeIn($('logo'), BANNER);
+// First launch: Floco shows the app before the first scan. Afterwards, scan right away: there is nothing to configure.
+if (tourSeen()) {cat.set('idle',`Oi! Já vou dar uma olhada no seu ${platform.device}.`);$('scan').click();}
+else {cat.set('idle',`Oi! Eu sou o ${CAT_NAME}.`);tour.start();}

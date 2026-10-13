@@ -20,9 +20,9 @@ environments — Xcode DerivedData, iOS simulators, Android SDK images and AVDs,
 Gradle caches, `node_modules`, package manager caches, and (in later phases)
 Docker, Flutter, Python, Rust, Homebrew and JetBrains artifacts.
 
-> **Status: scanner + Electron interface with recoverable cleanup.**
-> Written in TypeScript and developed with Bun — no Python, no runtime dependencies.
-> The CLI only analyzes. The desktop app can move selected, known
+> **Status: scanner + native Swift apps (macOS and iPhone) with recoverable cleanup.**
+> The engine is written in TypeScript and developed with Bun — no Python, no runtime
+> dependencies. The CLI only analyzes. The Mac app can move selected, known
 > regenerable caches to the macOS Trash after confirmation; it never empties Trash.
 
 ## Philosophy
@@ -32,8 +32,8 @@ Docker, Flutter, Python, Rust, Homebrew and JetBrains artifacts.
 - **Declarative rules first.** Most scanners are just data: a JSON file
   describing where to look, the risk, and how the artifact can be recreated.
   Specialized code is the exception, registered per rule id.
-- **Core independent of UI.** `core/` is pure domain logic with no Electron or
-  terminal code. The CLI and the desktop app consume the same core and the
+- **Core independent of UI.** `core/` is pure domain logic with no UI or
+  terminal code. The CLI and the Swift apps consume the same core and the
   same stable report contract.
 - **Bytes are the only truth.** All sizes are stored in bytes; human formatting
   happens only at the presentation layer.
@@ -56,19 +56,26 @@ context (e.g. an SDK another tool depends on) without touching rule files.
 
 ```
 dev-macos-clean/
-├── package.json            # scripts (build, start, scan, test, typecheck), `devclean` bin
+├── package.json            # scripts (build, scan, test, typecheck, test:apple), `devclean` bin
 ├── tsconfig.json           # strict TypeScript, type-checked with `tsc --noEmit`
-├── scripts/build.ts        # bundles desktop/ + rules/ into dist/ for Electron
+├── scripts/build.ts        # bundles the UI (ui/) and the engine into dist/ for the Swift apps
+├── scripts/engine.ts       # bundles core/ + rules/ into dist/engine/ for the Swift apps
 ├── rules/                  # one declarative rule per JSON file (data, not code)
 │   ├── node-modules.json
 │   ├── xcode-derived-data.json
 │   └── ...
-├── core/                   # domain logic: no UI, never deletes anything
-│   ├── index.ts            # public API: loadRules, scan, formatBytes, formatAgo
-│   ├── rules.ts            # JSON -> rule loading + strict validation
+├── core/                   # the engine: no UI, never deletes, no disk access of its own
+│   ├── index.ts            # public API on this machine: loadRules, scan, formatBytes, formatAgo
+│   ├── engine.ts           # portable entry point (no Node APIs), for JavaScriptCore
+│   ├── host.ts             # Host: the disk operations the engine asks for
+│   ├── node.ts             # the Node host (fs) used by the CLI and tests
+│   ├── jsc.ts              # JavaScriptCore entry for the Swift apps (rules embedded)
+│   ├── paths.ts            # POSIX path helpers (node:path semantics)
+│   ├── rules.ts            # JSON -> rules + strict validation
 │   ├── filesystem.ts       # dirSize, bounded walk, glob/fnmatch, excludes, symlink safety
 │   ├── scanner.ts          # discovery -> measurement -> classification -> report
 │   ├── analyzer.ts         # per-rule enrichers + totals
+│   ├── policy.ts           # cleanup policy: allowlist, review, automatic cleanup
 │   ├── format.ts           # human formatting (bytes, relative time)
 │   ├── types.ts            # Rule, Finding and Report types (the JSON contract)
 │   ├── test-support.ts     # temp trees for tests
@@ -76,35 +83,33 @@ dev-macos-clean/
 ├── cli/
 │   ├── devclean.ts         # `devclean scan` (human text or --json)
 │   └── devclean.test.ts
-└── desktop/                # Electron app
-    ├── main.ts             # main process: window, IPC handlers, confirmation dialogs
-    ├── scan.ts             # runs core/ in a worker thread (main process never blocks)
-    ├── scan-worker.ts      # worker entry: loads rules, scans, posts the report
-    ├── cleanup.ts          # cleanup policy: allowlist, identity checks, move to Trash
-    ├── preload.ts          # minimal bridge exposed to the page
-    ├── index.html, renderer.ts, style.css   # sandboxed UI, no Node access
-    └── *.test.ts
+├── ui/                     # the web UI shown by the Swift apps (sandboxed, no Node access)
+│   ├── index.html, renderer.ts, style.css
+│   ├── bridge.ts           # the window.devclean contract and the report the shell hands over
+│   ├── platform.ts         # what differs between Mac and iPhone
+│   └── *.test.ts
+└── apple/                  # Swift apps for macOS and iPhone (see below)
+    ├── DevClean/           # the app: WebShell (WKWebView), Mac and iPhone actions
+    └── DevCleanKit/        # engine bridge, native host, cleanup, photos, Files folders
 ```
 
-Bun runs the CLI and the tests straight from the `.ts` sources. Electron ships its
-own Node.js, so `bun run build` bundles the main process, preload and scan worker
-to CommonJS (and the renderer to a browser script) in `dist/`, together with a
-copy of `rules/`. The bundler inlines `__dirname`, so desktop code resolves its
-files at runtime from `app.getAppPath()` instead.
+Bun runs the CLI and the tests straight from the `.ts` sources. `bun run build`
+bundles the renderer to a browser script and the engine (with the rules embedded)
+for JavaScriptCore in `dist/`; an Xcode build phase copies both into the app.
 
-How a scan flows through the app:
+How a scan flows through the Mac app:
 
-1. `renderer.ts` calls `window.devclean.scan()`; `preload.ts` forwards it over IPC.
-2. `main.ts` asks `scan.ts`, which starts a worker thread that runs
-   `core.scan(core.loadRules(rulesDir), {globalScan: true})` and posts the report back
-   (5-minute timeout).
-3. `cleanup.prepare()` marks each finding `cleanup_allowed` / `cleanup_review` /
-   `auto_clean` against its own allowlist and records the identity (inode, mtime)
-   of every cleanable path.
+1. `renderer.ts` calls `window.devclean.scan()`; `WebShell.swift` receives it as
+   a script message from the page's main frame.
+2. The shell runs the bundled engine in JavaScriptCore off the main thread, with
+   `NativeHost` doing the disk access: `scan(rules, {globalScan: true})`.
+3. `Cleanup.prepare` marks each finding `cleanup_allowed` / `cleanup_review` /
+   `auto_clean` from `core/policy.ts` and records the identity (realpath, device,
+   inode, mtime, ctime) of every cleanable path.
 4. On cleanup, the selection is checked again (token, allowlist, identity,
    no symlinks), confirmed in a native dialog, and moved to the Trash.
 
-The scanner (`rules/` + `core/`) decides **what exists**; `desktop/cleanup.ts`
+The scanner (`rules/` + `core/`) decides **what exists**; `core/policy.ts`
 decides **what may be moved**. The two are separate on purpose: a broad or
 mistaken rule can make the scanner show more, but never makes the app delete more.
 
@@ -147,8 +152,7 @@ file** — no code changes needed. Specialized logic registers by rule id in
 
 ## Installation (development)
 
-Requires [Bun](https://bun.sh) 1.2+ (Electron is installed as a dev dependency and
-downloads its binary on first launch).
+Requires [Bun](https://bun.sh) 1.2+, and Xcode for the Swift apps.
 
 ```bash
 bun install
@@ -221,7 +225,7 @@ DevClean only analyzes storage. Nothing was deleted.
 
 ### JSON contract (`devclean scan --json`)
 
-Stable shape, also what the desktop app receives (`schema_version: 1`):
+Stable shape, also what the apps receive (`schema_version: 1`):
 
 ```json
 {
@@ -272,18 +276,19 @@ Stable shape, also what the desktop app receives (`schema_version: 1`):
   "last used") — computing the newest mtime inside would be much slower.
 - **One problematic directory never aborts a scan**: permission and IO errors
   are logged and collected in `report.warnings`, when meaningful.
-- Scans are synchronous and sequential inside one worker thread, so the
-  Electron main process stays responsive. Parallelism is deliberately deferred —
-  the walk caps already bound the work.
+- Scans are synchronous and sequential on a background task, so the app stays
+  responsive. Parallelism is deliberately deferred — the walk caps already bound
+  the work.
 
 ## Roadmap
 
 - **Phase 1 (complete)** — Core scanner + CLI. Rules for Node.js, Xcode (DerivedData)
   and Android (Gradle cache, system images, AVDs). Analysis only, no deletion.
-- **Phase 2 (available in Electron)** — Selected known regenerable caches moved
-  to Trash after native confirmation, with path and identity validation.
-- **Phase 3 (development interface available)** — Electron desktop app running
-  the core in-process (worker thread). Python scanner ported to Node, then to TypeScript on Bun.
+- **Phase 2 (complete)** — Selected known regenerable caches moved to Trash
+  after native confirmation, with path and identity validation.
+- **Phase 3 (complete)** — Desktop interface, first in Electron, now in native
+  Swift apps for macOS and iPhone that run the same TypeScript engine. Python
+  scanner ported to Node, then to TypeScript on Bun.
 - **Phase 4** — Advanced scanners: Docker, Flutter, Python (venvs, pip cache),
   Rust `target`, Maven, Homebrew, JetBrains, VSCode.
 - **Phase 5** — Developer Storage Intelligence: old project detection,
@@ -296,90 +301,139 @@ Stable shape, also what the desktop app receives (`schema_version: 1`):
   bounded and excludes protected system directories and external volumes.
 - Measurements are scans, not `du`-equivalent block usage (report-size vs
   disk-size differences are expected).
-- CLI is analysis only. Desktop cleanup uses Trash for authorized low-risk
+- CLI is analysis only. The Mac app's cleanup uses the Trash for authorized
   artifacts; no permanent deletion, symlink following or parallel scanning.
 
-## Aplicativo macOS (Electron)
+## macOS app
 
-Interface local em português, que roda o scanner do `core/` direto no app. Oferece busca,
-filtros por ferramenta e risco, ordenação, detalhes de reconstrução,
-Mostrar no Finder, exportação JSON e limpeza de caches conhecidos via Lixeira.
+A local interface in Brazilian Portuguese that runs the `core/` scanner inside
+the native Swift app. It offers search, filters by tool and risk, sorting,
+rebuild details, Show in Finder, JSON export and cleanup of known caches through
+the Trash.
 
-### Início rápido
+### Quick start
 
 ```bash
 bun install
-bun start       # compila para dist/, abre o app e já inicia a análise
+open apple/DevClean.xcodeproj   # pick "My Mac" and run; the app scans as it opens
 ```
 
-Na primeira vez, o Floco (o gato mascote) faz um tour guiado pelo app e só depois
-roda a primeira análise; para rever o tour, use **Tutorial** no topo. Nas próximas
-vezes, o app analisa o Mac assim que abre. Depois:
+On first launch, Floco (the cat mascot) gives a guided tour of the app and only
+then runs the first scan; to see the tour again, use **Tutorial** at the top. On
+later launches, the app scans the Mac as soon as it opens. Then:
 
-- **Limpeza automática** — um clique (mais a confirmação do macOS) envia à
-  Lixeira apenas o que se recria sozinho, sem passo manual nem trabalho local:
-  DerivedData, caches do Simulator, CocoaPods, Homebrew, pip, npm, pnpm, Yarn,
-  Bun, Go build, Gradle, Gradle Wrapper, pub cache, e `node_modules`/`target`
-  de projetos parados há 90+ dias.
-- **Selecionar tudo** — marca tudo que pode ir para a Lixeira: os itens de
-  baixo risco fora da automática (projetos ativos, caches de IDE, Device
-  Support, Playwright, módulos do Go, registro do Cargo) e os itens **Revisar**
-  que podem ser movidos com segurança (caches e logs de apps, Android system
-  images, AVDs, Xcode Archives, repositório Maven). A confirmação lista os
-  itens para revisar separadamente. Itens dentro de uma pasta já selecionada
-  são ignorados.
-- Continuam bloqueados, com o motivo na própria linha: a pasta Downloads
-  inteira, o disco do Docker, os Simuladores (use os comandos em Detalhes),
-  pacotes globais, pastas que o macOS não deixou ler por completo e os
-  arquivos do próprio DevClean.
+- **Limpeza automática** (automatic cleanup) — one click (plus the macOS
+  confirmation) moves to the Trash only what recreates itself, with no manual
+  step and no local work: DerivedData, Simulator caches, CocoaPods, Homebrew, pip,
+  npm, pnpm, Yarn, Bun, Go build, Gradle, Gradle Wrapper, pub cache, and
+  `node_modules`/`target` of projects untouched for 90+ days.
+- **Selecionar tudo** (select all) — marks everything that may go to the Trash:
+  the low-risk items outside automatic cleanup (active projects, IDE caches,
+  Device Support, Playwright, Go modules, Cargo registry) and the **Revisar**
+  (review) items that can be moved safely (app caches and logs, Android system
+  images, AVDs, Xcode Archives, Maven repository). The confirmation lists the
+  review items separately. Items inside an already selected folder are skipped.
+- Still blocked, with the reason on the row itself: the whole Downloads folder,
+  the Docker disk, Simulators (use the commands in Details), global packages,
+  folders macOS didn't let it read completely, and DevClean's own files.
 
-Depois, esvazie a Lixeira para liberar o espaço.
+Then empty the Trash to free the space.
 
-Sem interface: `bun run scan` (ou `bun run scan --category xcode`).
+Without the interface: `bun run scan` (or `bun run scan --category xcode`).
 
-### O que é detectado
+## Native Swift apps (macOS and iPhone)
 
-| Ferramenta | Limpeza com um clique (baixo risco) | Só para revisão |
+`apple/` holds a native Swift version, a single project for Mac and iPhone. It
+runs the **same TypeScript engine** from `core/` inside JavaScriptCore, with the
+rules from `rules/` embedded: Swift handles disk access and moving items to the
+Trash, and TypeScript decides what each item is and what may be cleaned.
+
+- **Mac** — shows the shared interface (Floco, tutorial, animations) in a
+  native WebView. It scans the disk and cleans
+  through the Trash with the same rules: a confirmation that defaults to
+  **Cancelar**, revalidation of every path before moving it, and no permanent
+  deletion.
+- **iPhone** — the same interface, adapted to the phone screen. iOS gives no
+  access to the disk or to other apps' data, so the iPhone app looks at what
+  takes space **on the phone** in the **whole photo library**: videos of 50 MB or
+  more, photos of 15 MB or more (ProRAW, panoramas), exact copies, **similar
+  photos** (retakes of the same moment, compared on the device with Apple's Vision;
+  favorites or the best-rated one stay), screenshots, screen recordings and extra
+  burst frames. Items whose original is only in
+  iCloud take no space on the phone, so they are left out. For items both on the
+  iPhone and in iCloud, it points to **Optimize iPhone Storage**, which removes
+  the original from the iPhone without deleting it.
+  Everything is for review only (there is no automatic cleanup): you pick the
+  items, iOS asks for its own confirmation, and they go to **Photos › Recently
+  Deleted**, where they stay for 30 days. With limited photo access, the app only
+  sees the photos you allowed. **Abrir para conferir** (open to check) in the
+  details opens the item in Quick Look.
+  With **+ Pasta do Arquivos** (add a Files folder) you pick folders from the
+  Files app (Downloads, all of iCloud Drive…) for it to look at too: files of
+  50 MB or more stored on the iPhone and downloads older than 30 days. These go
+  to **Recently Deleted** in the Files app, after a confirmation that defaults to
+  Cancelar. iOS doesn't let any app see other apps' data or System Data.
+- **Mac and iPhone** — a panel shows the disk space: what is in use, what
+  DevClean found, what the system frees by itself (Swift app only), and how much
+  is free now and after cleanup. The CLI also shows free space.
+
+```bash
+open apple/DevClean.xcodeproj          # pick "My Mac" or an iPhone and run
+bun run test:apple                     # builds the engine and runs the Swift tests
+```
+
+Building in Xcode needs Bun installed: a build phase builds the interface
+(`ui/`) and `devclean-engine.js` (`core/`) and copies both into the app. To
+run on a real iPhone, select your team in *Signing & Capabilities*.
+The Mac app doesn't use App Sandbox (it needs to read the whole disk) and needs
+**Full Disk Access** to measure some folders.
+
+### What is detected
+
+| Tool | One-click cleanup (low risk) | Review only |
 | --- | --- | --- |
-| Xcode / iOS | DerivedData, Device Support, caches do Simulator, CocoaPods | Simuladores (`xcrun simctl delete unavailable`), Archives |
-| Node.js | `node_modules`, npm, pnpm, Yarn, Bun, navegadores do Playwright | |
-| Android / Java | Gradle caches, Gradle Wrapper | System images, AVDs, repositório Maven |
-| Rust / Go / Python / Dart | `target/` de projetos Cargo, registro Cargo, Go build e módulos, pip, pub cache | |
-| IDEs / outros | Caches JetBrains e Android Studio, Homebrew | Docker (`docker system prune`), caches de apps, logs, Downloads |
+| Xcode / iOS | DerivedData, Device Support, Simulator caches, CocoaPods | Simulators (`xcrun simctl delete unavailable`), Archives |
+| Node.js | `node_modules`, npm, pnpm, Yarn, Bun, Playwright browsers | |
+| Android / Java | Gradle caches, Gradle Wrapper | System images, AVDs, Maven repository |
+| Rust / Go / Python / Dart | `target/` of Cargo projects, Cargo registry, Go build and modules, pip, pub cache | |
+| IDEs / other | JetBrains and Android Studio caches, Homebrew | Docker (`docker system prune`), app caches, logs, Downloads |
+| iPhone (photos and Files) | | Large videos and photos, exact copies, similar photos, screenshots, screen recordings, extra burst frames, large files, old downloads |
 
-Para incluir uma nova ferramenta, adicione um JSON em `rules/` e,
-se a limpeza for de baixo risco, o caminho fixo em `desktop/cleanup.ts`.
+To add a new tool, add a JSON file in `rules/` and, if its cleanup is low risk,
+its fixed path in `core/policy.ts`.
 
-O aplicativo analisa globalmente o disco local: pastas de usuários, projetos e
-caches conhecidos, além de Downloads e logs para revisão. Não há seletor de pasta.
-O scanner continua limitado em profundidade, diretórios e resultados; áreas de
-sistema (`/System`, `/usr`, `/private`, `/bin`, `/sbin`, `/dev`) e volumes externos
-não são percorridos. Pastas ocultas e diretórios pesados seguem as exclusões de
-descoberta, com caches ocultos conhecidos examinados por caminhos explícitos.
-Acesso depende das permissões do macOS. Avisos indicam resultados parciais.
-A CLI oferece `devclean scan --global` para a mesma descoberta.
+The app scans the local disk globally: user folders, projects and known caches,
+plus Downloads and logs for review. There is no folder picker on the Mac. The
+scanner stays bounded in depth, directories and results; system areas
+(`/System`, `/usr`, `/private`, `/bin`, `/sbin`, `/dev`) and external volumes are
+not walked. Hidden folders and heavy directories follow the discovery excludes,
+with known hidden caches checked through explicit paths. Access depends on macOS
+permissions, and warnings point out partial results. The CLI offers
+`devclean scan --global` for the same discovery.
 
-Marque itens regeneráveis e use **Enviar à Lixeira**. A confirmação nativa lista
-os caminhos e o tamanho. Caches de apps, logs, SDKs e AVDs podem ser
-selecionados manualmente, nunca entram na limpeza automática. Os arquivos do próprio DevClean
-são protegidos. Caminhos e identidade dos diretórios são revalidados antes da
-limpeza; links simbólicos, relatórios desatualizados e alvos não autorizados são
-rejeitados. Feche builds e ferramentas antes de limpar suas dependências.
+Select regenerable items and use **Enviar à Lixeira** (move to Trash). The native
+confirmation lists the paths and the size. App caches, logs, SDKs and AVDs can be
+selected by hand but never join automatic cleanup. DevClean's own files are
+protected. Paths and directory identities are revalidated before cleanup;
+symlinks, stale reports and unauthorized targets are rejected. Close builds and
+tools before cleaning their dependencies.
 
-**Mover para a Lixeira não libera espaço no disco imediatamente.** Restaure pelo
-Finder se necessário; esvaziar a Lixeira fica a cargo do usuário. Falhas parciais
-são exibidas e os itens que falharam permanecem no relatório.
+**Moving to the Trash doesn't free disk space right away.** Restore from the
+Finder if needed; emptying the Trash is up to the user. Partial failures are
+shown, and the items that failed stay in the report.
 
-O renderer usa sandbox, isolamento de contexto e uma ponte IPC com operações
-específicas. Caminhos enviados ao Finder vêm exclusivamente do último relatório.
-Não há servidor HTTP ou conteúdo remoto na interface.
+The page runs sandboxed in a WKWebView, served from the app's own `devclean://`
+scheme with a strict CSP, and talks to the app through a bridge limited to
+specific operations that only take indices into the last report. Paths sent to
+the Finder come only from that report. There is no HTTP server and no remote
+content in the interface.
 
-Esta versão executa pelo checkout; ainda não inclui instalador `.dmg`,
-assinatura ou notarização. Como não há mais Python, empacotar o app não exige
-embutir nenhum interpretador.
+This version is built from the checkout with Xcode; it doesn't ship a `.dmg`
+installer, signing or notarization yet.
 
-Validação: `bun test` (core, CLI e Electron) e `bun run typecheck`.
+Validation: `bun test` (core, CLI and UI), `bun run typecheck` and
+`bun run test:apple` (Swift).
 
-Mascote: gato em ASCII gerado por `scripts/cat-art.ts` a partir da foto
-["Domestic Cat White"](https://commons.wikimedia.org/wiki/File:Domestic_Cat_White.JPG),
-de JMG2JMG, em domínio público (Wikimedia Commons).
+Mascot: ASCII cat generated by `scripts/cat-art.ts` from the photo
+["Domestic Cat White"](https://commons.wikimedia.org/wiki/File:Domestic_Cat_White.JPG)
+by JMG2JMG, in the public domain (Wikimedia Commons).

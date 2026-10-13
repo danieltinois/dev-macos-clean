@@ -1,0 +1,10 @@
+{
+  "id": "duplicate-photos",
+  "name": "Cópias repetidas",
+  "category": "duplicates",
+  "severity": "REVIEW",
+  "reclaimable": false,
+  "description": "Fotos e vídeos idênticos a um item mais antigo da fototeca: mesmo tipo, resolução, duração e tamanho em bytes. A cópia mais antiga não entra na lista.",
+  "photos": {"duplicate": "extra"},
+  "rebuild": {"description": "Não se recria, mas a cópia mais antiga continua na fototeca. Fica 30 dias em Fotos › Apagados."}
+}

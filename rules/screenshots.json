@@ -1,0 +1,10 @@
+{
+  "id": "screenshots",
+  "name": "Capturas de tela",
+  "category": "screenshots",
+  "severity": "REVIEW",
+  "reclaimable": false,
+  "description": "Todas as capturas de tela guardadas no iPhone. Costumam ser lembretes rápidos que ninguém abre de novo; ordene por data para ver as mais antigas primeiro.",
+  "photos": {"subtype": "screenshot"},
+  "rebuild": {"description": "Não se recria. Fica 30 dias em Fotos › Apagados antes de sumir de vez."}
+}

@@ -1,0 +1,10 @@
+{
+  "id": "screen-recordings",
+  "name": "Gravações de tela",
+  "category": "screenshots",
+  "severity": "REVIEW",
+  "reclaimable": false,
+  "description": "Vídeos gravados da tela do iPhone, como demos e bugs para mostrar a alguém.",
+  "photos": {"subtype": "screen-recording"},
+  "rebuild": {"description": "Não se recria. Fica 30 dias em Fotos › Apagados antes de sumir de vez."}
+}
