@@ -36,12 +36,16 @@ public enum PhotoLibrary {
     PHAsset.fetchAssets(with: options).enumerateObjects {asset, _, _ in assets.append(asset)}
     let cloud = inCloud(assets.map(\.localIdentifier))
     let similar = similarGroups(assets, progress: progress)
+    // PhotoKit hands out autoreleased objects; draining them per item keeps large
+    // libraries within an iPhone's memory limit (the system kills the app otherwise).
     return assets.map {asset in
-      var item = describe(asset, cloud: cloud)
-      item["favorite"] = asset.isFavorite
-      item["similar"] = similar[asset.localIdentifier]?.group ?? NSNull()
-      item["score"] = similar[asset.localIdentifier]?.score ?? NSNull()
-      return item
+      autoreleasepool {
+        var item = describe(asset, cloud: cloud)
+        item["favorite"] = asset.isFavorite
+        item["similar"] = similar[asset.localIdentifier]?.group ?? NSNull()
+        item["score"] = similar[asset.localIdentifier]?.score ?? NSNull()
+        return item
+      }
     }
   }
 
@@ -58,10 +62,10 @@ public enum PhotoLibrary {
       for photo in session {
         if done % 20 == 0 {progress("Comparando fotos parecidas… \(done) de \(total)")}
         done += 1
-        if let asset = byId[photo.id], let print = analysis(asset).print {prints.append((photo.id, print))}
+        if let asset = byId[photo.id], let print = autoreleasepool(invoking: {analysis(asset).print}) {prints.append((photo.id, print))}
       }
       for group in SimilarPhotos.groups(prints) {
-        for id in group {result[id] = (group[0], byId[id].flatMap {analysis($0, scored: true).score} ?? NSNull())}
+        for id in group {result[id] = (group[0], autoreleasepool {byId[id].flatMap {analysis($0, scored: true).score}} ?? NSNull())}
       }
     }
     return result
@@ -87,7 +91,7 @@ public enum PhotoLibrary {
     options.resizeMode = .fast
     options.isNetworkAccessAllowed = false
     let box = ImageBox()
-    PHImageManager.default().requestImage(for: asset, targetSize: CGSize(width: 360, height: 360), contentMode: .aspectFit, options: options) {image, _ in box.image = image?.cgImage}
+    PHImageManager.default().requestImage(for: asset, targetSize: CGSize(width: 256, height: 256), contentMode: .aspectFit, options: options) {image, _ in box.image = image?.cgImage}
     return box.image
   }
 
@@ -102,15 +106,21 @@ public enum PhotoLibrary {
   private static let cache = Cache()
 
   // Items in iCloud Photos: those with a cloud identifier. nil when it can't tell.
+  // Asked in batches, so a large library never builds one huge answer.
   private static func inCloud(_ ids: [String]) -> Set<String>? {
-    guard !ids.isEmpty else {return []}
     var synced = Set<String>()
-    for (id, result) in PHPhotoLibrary.shared().cloudIdentifierMappings(forLocalIdentifiers: ids) {
-      switch result {
-      case .success: synced.insert(id)
-      case .failure(let error as PHPhotosError) where error.code == .identifierNotFound: continue
-      case .failure: return nil
+    for start in stride(from: 0, to: ids.count, by: 500) {
+      let failed: Bool = autoreleasepool {
+        for (id, result) in PHPhotoLibrary.shared().cloudIdentifierMappings(forLocalIdentifiers: Array(ids[start..<min(start + 500, ids.count)])) {
+          switch result {
+          case .success: synced.insert(id)
+          case .failure(let error as PHPhotosError) where error.code == .identifierNotFound: continue
+          case .failure: return true
+          }
+        }
+        return false
       }
+      if failed {return nil}
     }
     return synced
   }

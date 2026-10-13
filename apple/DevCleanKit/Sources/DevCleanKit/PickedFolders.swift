@@ -57,22 +57,25 @@ public enum PickedFolders {
     for folder in folders {
       guard let walk = FileManager.default.enumerator(at: folder.url, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles, .skipsPackageDescendants], errorHandler: {_, _ in true}) else {continue}
       let depth = folder.url.pathComponents.count
-      for case let url as URL in walk {
+      // One autorelease pool per file, so walking a big folder stays within memory limits.
+      while let next = autoreleasepool(invoking: {walk.nextObject()}) {
         if list.count >= maxItems {return list}
-        guard let values = try? url.resourceValues(forKeys: Set(keys)), values.isRegularFile == true, values.isSymbolicLink != true,
-              let path = NativeHost.realpath(url.path), seen.insert(path).inserted else {continue}
-        let cloud = values.isUbiquitousItem
-        let status = values.ubiquitousItemDownloadingStatus
-        // Outside iCloud Drive the file is always here; inside, it is unless not downloaded.
-        let local: Any = if cloud != true {true} else if let status {status != .notDownloaded} else {NSNull()}
-        list.append([
-          "path": path,
-          "label": ([folder.label] + url.pathComponents.dropFirst(depth)).joined(separator: " › "),
-          "bytes": Double(values.fileSize ?? 0),
-          "modified_ms": (values.contentModificationDate ?? .distantPast).timeIntervalSince1970 * 1000,
-          "local": local,
-          "cloud": cloud.map {$0 as Any} ?? NSNull(),
-        ])
+        autoreleasepool {
+          guard let url = next as? URL, let values = try? url.resourceValues(forKeys: Set(keys)), values.isRegularFile == true, values.isSymbolicLink != true,
+                let path = NativeHost.realpath(url.path), seen.insert(path).inserted else {return}
+          let cloud = values.isUbiquitousItem
+          let status = values.ubiquitousItemDownloadingStatus
+          // Outside iCloud Drive the file is always here; inside, it is unless not downloaded.
+          let local: Any = if cloud != true {true} else if let status {status != .notDownloaded} else {NSNull()}
+          list.append([
+            "path": path,
+            "label": ([folder.label] + url.pathComponents.dropFirst(depth)).joined(separator: " › "),
+            "bytes": Double(values.fileSize ?? 0),
+            "modified_ms": (values.contentModificationDate ?? .distantPast).timeIntervalSince1970 * 1000,
+            "local": local,
+            "cloud": cloud.map {$0 as Any} ?? NSNull(),
+          ])
+        }
       }
     }
     return list
