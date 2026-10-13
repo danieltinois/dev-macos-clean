@@ -11,7 +11,7 @@ const PHOTO_VALUES: Record<string, readonly string[]> = {media: ['image', 'video
 const NUMBERS = ['min_bytes', 'min_age_days'];
 
 // Photo and file criteria: each key is a known choice, a non-negative integer or,
-// for files, a folder name.
+// for files, a list of folder names or extensions.
 function validateMatch(field: 'photos' | 'files', value: unknown, choices: Record<string, readonly string[]>): object {
   if (!isObject(value)) throw new Error(`${field} must be an object`);
   const keys = Object.keys(value);
@@ -22,9 +22,10 @@ function validateMatch(field: 'photos' | 'files', value: unknown, choices: Recor
       if (!allowed.includes(value[key] as string)) throw new Error(`${field}.${key} must be one of ${allowed.join(', ')}`);
     } else if (NUMBERS.includes(key)) {
       if (!Number.isInteger(value[key]) || (value[key] as number) < 0) throw new Error(`${field}.${key} must be a non-negative integer`);
-    } else if (field === 'files' && key === 'folder') {
-      const folder = value[key];
-      if (typeof folder !== 'string' || !folder || folder.includes('/')) throw new Error('files.folder must be a plain folder name');
+    } else if (field === 'files' && key === 'folders') {
+      if (!isStringList(value[key]) || !(value[key] as string[]).length || (value[key] as string[]).some(name => !name || name.includes('/'))) throw new Error('files.folders must be plain folder names');
+    } else if (field === 'files' && key === 'extensions') {
+      if (!isStringList(value[key]) || !(value[key] as string[]).length || (value[key] as string[]).some(ext => !/^[a-z0-9]+$/.test(ext))) throw new Error('files.extensions must be lowercase extensions without the dot');
     } else throw new Error(`unknown ${field} field(s): ${key}`);
   }
   return value;
@@ -55,7 +56,7 @@ export function validateRule(data: unknown): Rule {
   }
   const {paths, patterns, markers} = lists as Record<keyof typeof lists, string[]>;
   const photos = data.photos === undefined || data.photos === null ? null : validateMatch('photos', data.photos, PHOTO_VALUES) as PhotoMatch;
-  const files = data.files === undefined || data.files === null ? null : validateMatch('files', data.files, {}) as FileMatch;
+  const files = data.files === undefined || data.files === null ? null : validateMatch('files', data.files, {duplicate: ['extra']}) as FileMatch;
   if (photos && files) throw new Error('a rule matches photos or files, not both');
   if ((photos || files) && (paths.length || patterns.length || markers.length)) throw new Error(`${photos ? 'photos' : 'files'} rules take no paths, patterns or markers`);
   if (!paths.length && !patterns.length && !photos && !files) throw new Error('rule must define at least one of paths, patterns, photos or files');

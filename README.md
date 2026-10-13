@@ -58,7 +58,7 @@ context (e.g. an SDK another tool depends on) without touching rule files.
 dev-macos-clean/
 ├── package.json            # scripts (build, scan, test, typecheck, test:apple), `devclean` bin
 ├── tsconfig.json           # strict TypeScript, type-checked with `tsc --noEmit`
-├── scripts/build.ts        # bundles the UI (ui/) and the engine into dist/ for the Swift apps
+├── scripts/build.ts        # bundles the engine into dist/ for the Swift apps
 ├── scripts/engine.ts       # bundles core/ + rules/ into dist/engine/ for the Swift apps
 ├── rules/                  # one declarative rule per JSON file (data, not code)
 │   ├── node-modules.json
@@ -83,25 +83,19 @@ dev-macos-clean/
 ├── cli/
 │   ├── devclean.ts         # `devclean scan` (human text or --json)
 │   └── devclean.test.ts
-├── ui/                     # the web UI shown by the Swift apps (sandboxed, no Node access)
-│   ├── index.html, renderer.ts, style.css
-│   ├── bridge.ts           # the window.devclean contract and the report the shell hands over
-│   ├── platform.ts         # what differs between Mac and iPhone
-│   └── *.test.ts
 └── apple/                  # Swift apps for macOS and iPhone (see below)
-    ├── DevClean/           # the app: WebShell (WKWebView), Mac and iPhone actions
-    └── DevCleanKit/        # engine bridge, native host, cleanup, photos, Files folders
+    ├── DevClean/           # the SwiftUI interface, Floco, Mac and iPhone actions
+    └── DevCleanKit/        # engine bridge, native host, cleanup, photos, Files folders, UI logic
 ```
 
 Bun runs the CLI and the tests straight from the `.ts` sources. `bun run build`
-bundles the renderer to a browser script and the engine (with the rules embedded)
-for JavaScriptCore in `dist/`; an Xcode build phase copies both into the app.
+bundles the engine (with the rules embedded) for JavaScriptCore in `dist/`; an
+Xcode build phase copies it into the app.
 
 How a scan flows through the Mac app:
 
-1. `renderer.ts` calls `window.devclean.scan()`; `WebShell.swift` receives it as
-   a script message from the page's main frame.
-2. The shell runs the bundled engine in JavaScriptCore off the main thread, with
+1. The SwiftUI interface asks `AppModel` to scan, which calls `MacActions`.
+2. It runs the bundled engine in JavaScriptCore off the main thread, with
    `NativeHost` doing the disk access: `scan(rules, {globalScan: true})`.
 3. `Cleanup.prepare` marks each finding `cleanup_allowed` / `cleanup_review` /
    `auto_clean` from `core/policy.ts` and records the identity (realpath, device,
@@ -348,31 +342,38 @@ runs the **same TypeScript engine** from `core/` inside JavaScriptCore, with the
 rules from `rules/` embedded: Swift handles disk access and moving items to the
 Trash, and TypeScript decides what each item is and what may be cleaned.
 
-- **Mac** — shows the shared interface (Floco, tutorial, animations) in a
-  native WebView. It scans the disk and cleans
+- **Mac** — a native SwiftUI interface (Floco, tutorial, animations), shared
+  with the iPhone. It scans the disk and cleans
   through the Trash with the same rules: a confirmation that defaults to
   **Cancelar**, revalidation of every path before moving it, and no permanent
   deletion.
 - **iPhone** — the same interface, adapted to the phone screen. iOS gives no
   access to the disk or to other apps' data, so the iPhone app looks at what
   takes space **on the phone** in the **whole photo library**: videos of 50 MB or
-  more, photos of 15 MB or more (ProRAW, panoramas), exact copies, **similar
+  more, photos of 15 MB or more (ProRAW, panoramas), byte-identical copies
+  (checked by content hash), **similar
   photos** (retakes of the same moment, compared on the device with Apple's Vision;
   favorites or the best-rated one stay), screenshots, screen recordings and extra
   burst frames. Items whose original is only in
   iCloud take no space on the phone, so they are left out. For items both on the
   iPhone and in iCloud, it points to **Optimize iPhone Storage**, which removes
   the original from the iPhone without deleting it.
-  Everything is for review only (there is no automatic cleanup): you pick the
-  items, iOS asks for its own confirmation, and they go to **Photos › Recently
-  Deleted**, where they stay for 30 days. With limited photo access, the app only
+  **Limpeza automática** (automatic cleanup) takes only what loses nothing:
+  identical copies (the oldest stays) and burst frames nobody picked (the key
+  photo stays). Everything else is for review: you pick the items. Either way iOS
+  asks for its own confirmation, and they go to **Photos › Recently Deleted**,
+  where they stay for 30 days. With limited photo access, the app only
   sees the photos you allowed. **Abrir para conferir** (open to check) in the
   details opens the item in Quick Look.
-  With **+ Pasta do Arquivos** (add a Files folder) you pick folders from the
-  Files app (Downloads, all of iCloud Drive…) for it to look at too: files of
-  50 MB or more stored on the iPhone and downloads older than 30 days. These go
-  to **Recently Deleted** in the Files app, after a confirmation that defaults to
-  Cancelar. iOS doesn't let any app see other apps' data or System Data.
+  With **+ Pasta do Arquivos** (add a Files folder) you pick one or more folders
+  from the Files app; picking **On My iPhone** and **iCloud Drive** covers
+  everything iOS lets an app see, including the folders other apps share there.
+  It looks for files of 50 MB or more stored on the iPhone, duplicate files
+  (same content hash, whatever the name), caches and temporary files of apps,
+  installers and archives (`.zip`, `.ipa`, `.dmg`…), log files and downloads
+  older than 30 days. These are always for review and go to **Recently Deleted**
+  in the Files app, after a confirmation that defaults to Cancelar. iOS doesn't
+  let any app see other apps' private data, their caches or System Data.
 - **Mac and iPhone** — a panel shows the disk space: what is in use, what
   DevClean found, what the system frees by itself (Swift app only), and how much
   is free now and after cleanup. The CLI also shows free space.
@@ -382,8 +383,8 @@ open apple/DevClean.xcodeproj          # pick "My Mac" or an iPhone and run
 bun run test:apple                     # builds the engine and runs the Swift tests
 ```
 
-Building in Xcode needs Bun installed: a build phase builds the interface
-(`ui/`) and `devclean-engine.js` (`core/`) and copies both into the app. To
+Building in Xcode needs Bun installed: a build phase builds `devclean-engine.js`
+(`core/`) and copies it into the app. To
 run on a real iPhone, select your team in *Signing & Capabilities*.
 The Mac app doesn't use App Sandbox (it needs to read the whole disk) and needs
 **Full Disk Access** to measure some folders.
@@ -397,7 +398,7 @@ The Mac app doesn't use App Sandbox (it needs to read the whole disk) and needs
 | Android / Java | Gradle caches, Gradle Wrapper | System images, AVDs, Maven repository |
 | Rust / Go / Python / Dart | `target/` of Cargo projects, Cargo registry, Go build and modules, pip, pub cache | |
 | IDEs / other | JetBrains and Android Studio caches, Homebrew | Docker (`docker system prune`), app caches, logs, Downloads |
-| iPhone (photos and Files) | | Large videos and photos, exact copies, similar photos, screenshots, screen recordings, extra burst frames, large files, old downloads |
+| iPhone (photos and Files) | Identical photo copies, extra burst frames | Large videos and photos, similar photos, screenshots, screen recordings, large and duplicate files, app caches, installers, logs, old downloads |
 
 To add a new tool, add a JSON file in `rules/` and, if its cleanup is low risk,
 its fixed path in `core/policy.ts`.
@@ -422,16 +423,14 @@ tools before cleaning their dependencies.
 Finder if needed; emptying the Trash is up to the user. Partial failures are
 shown, and the items that failed stay in the report.
 
-The page runs sandboxed in a WKWebView, served from the app's own `devclean://`
-scheme with a strict CSP, and talks to the app through a bridge limited to
-specific operations that only take indices into the last report. Paths sent to
-the Finder come only from that report. There is no HTTP server and no remote
-content in the interface.
+The interface is native SwiftUI with no web content. It hands the trusted side
+only indices into the last report plus its token, never paths; paths sent to the
+Finder come only from that report. There is no HTTP server and nothing remote.
 
 This version is built from the checkout with Xcode; it doesn't ship a `.dmg`
 installer, signing or notarization yet.
 
-Validation: `bun test` (core, CLI and UI), `bun run typecheck` and
+Validation: `bun test` (core and CLI), `bun run typecheck` and
 `bun run test:apple` (Swift).
 
 Mascot: ASCII cat generated by `scripts/cat-art.ts` from the photo

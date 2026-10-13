@@ -70,16 +70,27 @@ function ruleFor(host: Host, target: string, patternRules: Rule[]) {
 
 // Ids of items that are exact copies of an older one: same kind, pixel size,
 // duration and bytes. The oldest copy of each group stays out.
+// When the host hashed the content (`digest`), only identical bytes count, and an
+// item it couldn't read (null) is never a copy.
 export function duplicateExtras(assets: PhotoAsset[]): Set<string> {
-  const groups = new Map<string, PhotoAsset[]>();
-  for (const asset of assets) {
-    if (asset.bytes === null || !asset.width || !asset.height) continue;
-    const key = `${asset.media} ${asset.width}x${asset.height} ${asset.duration_ms ?? 0} ${asset.bytes}`;
-    groups.set(key, [...groups.get(key) ?? [], asset]);
-  }
+  const keyed = assets.filter(asset => asset.bytes !== null && asset.width && asset.height && asset.digest !== null)
+    .map(asset => [`${asset.media} ${asset.width}x${asset.height} ${asset.duration_ms ?? 0} ${asset.bytes} ${asset.digest ?? ''}`, asset] as const);
+  return oldestKept(keyed, asset => asset.created_ms, asset => asset.id);
+}
+
+// Ids of files with the same content (size and SHA-256) as an older file. Files
+// the host didn't hash never count: names alone say nothing about content.
+export function duplicateFileExtras(items: FileItem[]): Set<string> {
+  return oldestKept(items.filter(item => item.digest).map(item => [`${item.bytes} ${item.digest}`, item] as const), item => item.modified_ms, item => item.path);
+}
+
+// In each group of equal keys, every item but the oldest.
+function oldestKept<T>(keyed: (readonly [string, T])[], time: (item: T) => number, id: (item: T) => string): Set<string> {
+  const groups = new Map<string, T[]>();
+  for (const [key, item] of keyed) groups.set(key, [...groups.get(key) ?? [], item]);
   const extras = new Set<string>();
   for (const group of groups.values()) {
-    group.sort((a, b) => a.created_ms - b.created_ms || compare(a.id, b.id)).slice(1).forEach(asset => extras.add(asset.id));
+    group.sort((a, b) => time(a) - time(b) || compare(id(a), id(b))).slice(1).forEach(item => extras.add(id(item)));
   }
   return extras;
 }
@@ -118,9 +129,12 @@ export function photoMatches(match: PhotoMatch, asset: PhotoAsset, now: number, 
     (match.min_age_days === undefined || now - asset.created_ms >= match.min_age_days * 86400000);
 }
 
-// Whether a file from a picked folder meets every criterion of `match`.
-export function fileMatches(match: FileMatch, item: FileItem, now: number): boolean {
-  return (!match.folder || path.dirname(item.path).split('/').includes(match.folder)) &&
+// Whether a file from a picked folder meets every criterion of `match`. `extras` comes from duplicateFileExtras().
+export function fileMatches(match: FileMatch, item: FileItem, now: number, extras: Set<string> = new Set()): boolean {
+  const folders = path.dirname(item.path).split('/'), name = path.basename(item.path), dot = name.lastIndexOf('.');
+  return (!match.folders || match.folders.some(folder => folders.includes(folder))) &&
+    (!match.extensions || (dot > 0 && match.extensions.includes(name.slice(dot + 1).toLowerCase()))) &&
+    (!match.duplicate || extras.has(item.path)) &&
     (match.min_bytes === undefined || item.bytes >= match.min_bytes) &&
     (match.min_age_days === undefined || now - item.modified_ms >= match.min_age_days * 86400000);
 }
@@ -230,10 +244,10 @@ export function scan(host: Host, rules: Rule[], options: Partial<ScanOptions> = 
   if (fileRules.length && !full()) {
     let items: FileItem[] = [];
     try {items = host.files!();} catch (error) {warnings.push(`cannot read picked folders: ${(error as Error).message}`);}
-    const now = opts.now ?? Date.now();
+    const now = opts.now ?? Date.now(), extras = duplicateFileExtras(items);
     for (const item of items) {
       if (item.local === false) continue;
-      const rule = fileRules.find(rule => fileMatches(rule.files!, item, now));
+      const rule = fileRules.find(rule => fileMatches(rule.files!, item, now, extras));
       if (!rule) continue;
       if (full()) {stopped(); break;}
       const stored = fileStoredAt(item);

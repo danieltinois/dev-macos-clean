@@ -38,6 +38,12 @@ const DevCleanEngine = {
   remaining(report: string, moved: string): string {
     return JSON.stringify(engine.policy.withoutMoved(JSON.parse(report), (JSON.parse(moved) as string[]).map(path => ({path}))));
   },
+  // The ASCII art the app shows, drawn by the same code as the CLI: the logo,
+  // the spinner frames and Floco (whole, or the bust for the tutorial). `pose` is JSON.
+  banner: () => engine.BANNER,
+  spinner: () => JSON.stringify(engine.SPINNER),
+  cat: (mood: engine.Mood, pose: string) => engine.drawCat(mood, JSON.parse(pose)),
+  portrait: (mood: engine.Mood, pose: string) => engine.portrait(mood, JSON.parse(pose)),
 };
 
 (globalThis as {DevCleanEngine?: typeof DevCleanEngine}).DevCleanEngine = DevCleanEngine;

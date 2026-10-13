@@ -5,6 +5,8 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import vm from 'node:vm';
 import {bundleEngine} from '../scripts/engine';
+import {BANNER, SPINNER} from './ascii';
+import {drawCat, portrait} from './cat';
 import {loadRules, nodeHost, scan} from './node';
 import * as policy from './policy';
 import {buildTree, removeTempDirs, tempDir} from './test-support';
@@ -19,6 +21,10 @@ interface Bridge {
   select(findings: string, indices: string): string;
   companions(host: typeof nodeHost, finding: string): string;
   remaining(report: string, moved: string): string;
+  banner(): string;
+  spinner(): string;
+  cat(mood: string, pose: string): string;
+  portrait(mood: string, pose: string): string;
 }
 let bridge: Bridge;
 beforeAll(async () => {
@@ -71,4 +77,12 @@ test('select and remaining go through the bundle', () => {
   const rest = JSON.parse(bridge.remaining(JSON.stringify(report), JSON.stringify([report.findings[0]!.path]))) as Report;
   assert.equal(rest.findings.length, report.findings.length - 1);
   assert.equal(rest.totals.bytes, report.totals.bytes - report.findings[0]!.size_bytes);
+});
+
+test('the bundle draws the same ASCII art as the CLI', () => {
+  const pose = {t: 1.3, look: 1 as const, mouth: 2 as const, sweep: 0.2, hop: true};
+  assert.equal(bridge.banner(), BANNER);
+  assert.deepEqual(JSON.parse(bridge.spinner()), SPINNER);
+  assert.equal(bridge.cat('happy', JSON.stringify(pose)), drawCat('happy', pose));
+  assert.equal(bridge.portrait('blink', JSON.stringify(pose)), portrait('blink', pose));
 });

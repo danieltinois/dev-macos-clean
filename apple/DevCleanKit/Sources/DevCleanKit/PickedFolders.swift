@@ -4,6 +4,7 @@
 // as core/host.ts FileItem. Nothing here deletes anything.
 // iOS only: the Mac app scans the disk directly.
 #if os(iOS)
+import CryptoKit
 import Foundation
 
 public struct PickedFolder: Sendable {
@@ -55,12 +56,12 @@ public enum PickedFolders {
   public static func items(in folders: [PickedFolder], progress: @Sendable (String) -> Void = {_ in}) -> [[String: Any]] {
     let keys: [URLResourceKey] = [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey, .contentModificationDateKey, .isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey]
     var list: [[String: Any]] = [], seen = Set<String>()
-    for folder in folders {
+    walking: for folder in folders {
       guard let walk = FileManager.default.enumerator(at: folder.url, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles, .skipsPackageDescendants], errorHandler: {_, _ in true}) else {continue}
       let depth = folder.url.pathComponents.count
       // One autorelease pool per file, so walking a big folder stays within memory limits.
       while let next = autoreleasepool(invoking: {walk.nextObject()}) {
-        if list.count >= maxItems {return list}
+        if list.count >= maxItems {break walking}
         if list.count % 500 == 0 {progress("Lendo pastas do Arquivos… \(list.count) arquivos")}
         autoreleasepool {
           guard let url = next as? URL, let values = try? url.resourceValues(forKeys: Set(keys)), values.isRegularFile == true, values.isSymbolicLink != true,
@@ -80,7 +81,41 @@ public enum PickedFolders {
         }
       }
     }
+    hashSameSizes(&list, progress: progress)
     return list
+  }
+
+  // Files of the same size might hold the same content: hash them (from 100 KB,
+  // only what is on the device), so duplicates are judged by content, not name.
+  private static func hashSameSizes(_ list: inout [[String: Any]], progress: @Sendable (String) -> Void) {
+    var bySize: [Double: [Int]] = [:]
+    for (index, item) in list.enumerated() {
+      guard let bytes = item["bytes"] as? Double, bytes >= 100_000, item["local"] as? Bool == true else {continue}
+      bySize[bytes, default: []].append(index)
+    }
+    let candidates = bySize.values.filter {$0.count > 1}.flatMap {$0}
+    for (done, index) in candidates.enumerated() {
+      if done % 20 == 0 {progress("Conferindo arquivos duplicados… \(done) de \(candidates.count)")}
+      list[index]["digest"] = autoreleasepool {(list[index]["path"] as? String).flatMap(digest)} ?? NSNull()
+    }
+  }
+
+  // SHA-256 of a file, read in 1 MB chunks; nil when it can't be read.
+  private static func digest(_ path: String) -> String? {
+    guard let handle = FileHandle(forReadingAtPath: path) else {return nil}
+    defer {try? handle.close()}
+    var sha = SHA256()
+    while true {
+      let read: Bool? = autoreleasepool {
+        guard let chunk = try? handle.read(upToCount: 1 << 20) else {return nil}
+        if chunk.isEmpty {return false}
+        sha.update(data: chunk)
+        return true
+      }
+      guard let more = read else {return nil}
+      if !more {break}
+    }
+    return sha.finalize().map {String(format: "%02x", $0)}.joined()
   }
 
   private static func saved() -> [Data] {UserDefaults.standard.array(forKey: key) as? [Data] ?? []}

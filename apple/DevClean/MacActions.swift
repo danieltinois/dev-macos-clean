@@ -1,36 +1,18 @@
-// The macOS window and its answers to window.devclean: scan the disk with the
-// TypeScript engine and move confirmed items to the Trash.
+// The Mac's native side: scan the disk with the TypeScript engine and move
+// confirmed items to the Trash.
 // Cleanup starts only from the user's click; the confirmation defaults to Cancelar.
 #if os(macOS)
 import AppKit
 import DevCleanKit
-import SwiftUI
 import UniformTypeIdentifiers
 
-struct DesktopWindow: View {
-  @State private var shell = WebShell(actions: MacActions())
-
-  var body: some View {
-    ShellView(shell: shell)
-      .ignoresSafeArea()
-      // The page's title bar is drawn in HTML; this makes it drag the window.
-      .overlay(alignment: .top) {
-        Color.clear.frame(height: 52).contentShape(Rectangle()).gesture(WindowDragGesture()).allowsWindowActivationEvents(true)
-      }
-      .frame(minWidth: 900, minHeight: 650)
-      .background(Color.shellBackground)
-  }
-}
-
 @MainActor
-final class MacActions: ShellActions {
-  let platform = "mac"
-  weak var shell: WebShell?
+final class MacActions: Actions {
   private var report: Report?
   private var manifest: Cleanup.Manifest = [:]
   private var busy = false
 
-  func scan() async throws -> String {
+  func scan(progress: @escaping @Sendable (String) -> Void) async throws -> Report {
     if busy {throw Cleanup.Failure("Uma análise já está em andamento.")}
     busy = true
     defer {busy = false}
@@ -42,10 +24,10 @@ final class MacActions: ShellActions {
     }.value
     report = prepared.report
     manifest = prepared.manifest
-    return try BridgeReply.report(prepared.report)
+    return prepared.report
   }
 
-  func cleanup(indices: [Int], token: String, automatic: Bool) async throws -> String {
+  func cleanup(indices: [Int], token: String, automatic: Bool) async throws -> CleanupResult {
     if busy {throw Cleanup.Failure("Aguarde a operação atual.")}
     busy = true
     defer {busy = false}
@@ -53,11 +35,11 @@ final class MacActions: ShellActions {
     let selected = try Cleanup.select(report, indices: indices, token: token, engine: engine)
     if automatic && selected.contains(where: {$0.autoClean != true}) {throw Cleanup.Failure("Item não autorizado para limpeza automática.")}
     try Cleanup.validate(selected, manifest: manifest)
-    guard await confirm(Confirmation(selected, automatic: automatic)), let current = report else {return BridgeReply.canceled}
+    guard await confirm(Confirmation(selected, automatic: automatic)), let current = report else {return .canceled}
     let outcome = try Cleanup.moveToTrash(selected, manifest: &manifest, engine: engine, trash: Cleanup.systemTrash)
     let remaining = try Cleanup.remainingReport(current, moved: outcome.moved.map(\.path), engine: engine)
     report = remaining
-    return try BridgeReply.cleanup(outcome, report: remaining)
+    return .done(outcome, remaining)
   }
 
   // A sheet on the window; the first button, Cancelar, is the default.
@@ -69,7 +51,7 @@ final class MacActions: ShellActions {
     alert.informativeText = confirmation.detail
     alert.addButton(withTitle: "Cancelar")
     alert.addButton(withTitle: "Enviar à Lixeira").keyEquivalent = ""
-    guard let window = shell?.webView.window else {return alert.runModal() == .alertSecondButtonReturn}
+    guard let window = NSApp.keyWindow ?? NSApp.windows.first else {return alert.runModal() == .alertSecondButtonReturn}
     return await alert.beginSheetModal(for: window) == .alertSecondButtonReturn
   }
 
@@ -83,7 +65,7 @@ final class MacActions: ShellActions {
     let panel = NSSavePanel()
     panel.nameFieldStringValue = "devclean-report.json"
     panel.allowedContentTypes = [.json]
-    let response = if let window = shell?.webView.window {await panel.beginSheetModal(for: window)} else {panel.runModal()}
+    let response = if let window = NSApp.keyWindow ?? NSApp.windows.first {await panel.beginSheetModal(for: window)} else {panel.runModal()}
     guard response == .OK, let url = panel.url else {return false}
     try report.encoded().write(to: url)
     return true

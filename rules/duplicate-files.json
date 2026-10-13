@@ -1,0 +1,10 @@
+{
+  "id": "duplicate-files",
+  "name": "Arquivos duplicados",
+  "category": "duplicates",
+  "severity": "REVIEW",
+  "reclaimable": false,
+  "description": "Arquivos com o mesmo conteúdo de um arquivo mais antigo (conferido byte a byte pelo hash), mesmo com outro nome, como documento.pdf e documento 2.pdf. O mais antigo fica.",
+  "files": {"duplicate": "extra"},
+  "rebuild": {"description": "Não se recria, mas o arquivo mais antigo continua onde está. Fica em Apagados no app Arquivos até sumir de vez."}
+}

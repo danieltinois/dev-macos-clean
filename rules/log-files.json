@@ -1,0 +1,10 @@
+{
+  "id": "log-files",
+  "name": "Arquivos de log",
+  "category": "logs",
+  "severity": "REVIEW",
+  "reclaimable": true,
+  "description": "Registros de apps (.log, .crash, .ips, .trace) guardados no app Arquivos. Servem para diagnosticar problemas e costumam ficar esquecidos.",
+  "files": {"extensions": ["log", "crash", "ips", "trace"]},
+  "rebuild": {"description": "Os apps criam registros novos quando precisam. Fica em Apagados no app Arquivos até sumir de vez."}
+}

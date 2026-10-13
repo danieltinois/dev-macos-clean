@@ -57,6 +57,13 @@ test('a copy on the iPhone of an original only in iCloud is still a copy', () =>
   assert.deepEqual(report.findings.map(f => [f.rule_id, f.path]), [['duplicate-photos', `${policy.PHOTO_PREFIX}copy`]]);
 });
 
+test('with content hashes, only identical bytes are copies, and unreadable items never are', () => {
+  const copy = (id: string, created_ms: number, digest: string | null | undefined) => asset({id, created_ms, width: 4032, height: 3024, bytes: 3_000_000, digest});
+  assert.deepEqual([...duplicateExtras([copy('a', 1, 'x'), copy('b', 2, 'x'), copy('c', 3, 'y'), copy('d', 4, null), copy('e', 5, null)])], ['b']);
+  // Hosts that don't hash fall back to kind, size and bytes.
+  assert.deepEqual([...duplicateExtras([copy('a', 1, undefined), copy('b', 2, undefined)])], ['b']);
+});
+
 test('in a group of similar photos the favorite or the best one stays', () => {
   const shot = (id: string, fields: Partial<PhotoAsset>) => asset({id, name: `${id}.HEIC`, bytes: 2_000_000, ...fields});
   const keepers = (library: PhotoAsset[]) => Object.fromEntries([...similarExtras(library)].map(([id, keeper]) => [id, keeper.id]));
@@ -98,12 +105,18 @@ test('a denied photo library becomes a warning', () => {
   assert.deepEqual(report.warnings, ['cannot read photos: Sem acesso às Fotos.']);
 });
 
-test('photo findings are allowed for review only, and only for photo rules', () => {
+test('photo findings need review, except copies and burst extras, which are automatic', () => {
   const report = scan(photoHost(() => LIBRARY), loadRules(), {home: '/nonexistent', sources: ['photos'], now: NOW});
   for (const finding of report.findings) {
-    assert.deepEqual(policy.policy(nodeHost, finding, '/h', '/app'), {allowed: true, review: true}, finding.rule_id);
-    assert.equal(policy.isAutomatic(finding, NOW), false);
+    const auto = finding.rule_id === 'burst-extras';
+    assert.deepEqual(policy.policy(nodeHost, finding, '/h', '/app'), {allowed: true, review: !auto}, finding.rule_id);
+    assert.equal(policy.isAutomatic(finding, NOW), auto, finding.rule_id);
   }
+  // Only as SAFE findings, and only from the photo library.
+  const burst = report.findings.find(f => f.rule_id === 'burst-extras')!;
+  assert.deepEqual(policy.policy(nodeHost, {...burst, severity: 'REVIEW'}, '/h', '/app'), {allowed: true, review: true});
+  assert.equal(policy.isAutomatic({...burst, severity: 'REVIEW'}, NOW), false);
+  assert.equal(policy.isAutomatic({...burst, path: '/h/photo.jpg'}, NOW), false);
   const forged = {...report.findings[0]!, rule_id: 'npm-cache', severity: 'SAFE' as const};
   assert.equal(policy.policy(nodeHost, forged, '/h', '/app').allowed, false);
   assert.equal(policy.policy(nodeHost, {...report.findings[0]!, severity: 'DANGER'}, '/h', '/app').allowed, false);

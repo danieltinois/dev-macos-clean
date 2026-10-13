@@ -33,6 +33,9 @@ export interface PhotoAsset {
   favorite?: boolean;
   similar?: string | null;
   score?: number | null;
+  // SHA-256 of the content, on hosts that hash possible copies (the iPhone does
+  // it for items that match another in kind, size and bytes). null: not readable.
+  digest?: string | null;
 }
 
 // One file in a folder the user picked in the Files app (iPhone).
@@ -47,6 +50,8 @@ export interface FileItem {
   // whether it is in iCloud Drive. null: unknown.
   local: boolean | null;
   cloud: boolean | null;
+  // SHA-256 of the content, for files that share their size with another one. null: not readable.
+  digest?: string | null;
 }
 
 // Space on the volume that holds the home folder. `purgeable_bytes` is what the
