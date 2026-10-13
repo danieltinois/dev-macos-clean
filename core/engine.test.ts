@@ -1,4 +1,5 @@
 // The engine must stay portable: no Node/Bun APIs outside the Node adapter.
+// core/jsc.test.ts runs the actual bundle in a bare context.
 import {test} from 'bun:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -17,9 +18,3 @@ test('core modules use no Node or Bun APIs outside the Node adapter', () => {
   }
 });
 
-test('the engine bundles for a non-Node runtime', async () => {
-  const result = await Bun.build({entrypoints: [path.join(CORE, 'engine.ts')], target: 'browser', format: 'iife'});
-  assert.ok(result.success, result.logs.join('\n'));
-  const code = await result.outputs[0]!.text();
-  assert.doesNotMatch(code, /require\(|node:/);
-});

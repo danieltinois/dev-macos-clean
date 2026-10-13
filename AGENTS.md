@@ -14,27 +14,27 @@ bun install            # dependencies (Electron downloads its binary on first la
 bun test               # all tests (bun:test); `bun test core/scanner.test.ts` for one file
 bun run typecheck      # tsc --noEmit, strict; must pass, tests don't type-check
 bun run scan --json    # run the CLI from source (analysis only, safe to run)
-bun run build          # bundle desktop/ + rules/ into dist/
+bun run build          # bundle desktop/ + rules/ into dist/ (and the engine, see below)
+bun run build:engine   # bundle core/ + rules/ for JavaScriptCore: dist/engine/devclean-engine.js
 bun start              # build, then open the Electron app (it scans the whole Mac on launch)
 ```
 
 Before finishing a change, run `bun test` and `bun run typecheck`. If you touch
 `desktop/` or `scripts/build.ts`, also run `bun run build`.
 
-The Swift apps under `apple/` need Xcode (prefix commands with
+The Swift apps under `apple/` need Xcode and Bun (an Xcode build phase runs
+`apple/bundle-engine.sh`). Prefix commands with
 `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` if `xcode-select`
-points at the Command Line Tools):
+points at the Command Line Tools:
 
 ```bash
-cd apple/DevCleanKit && swift test     # DevCleanKit tests (swift-testing)
+bun run test:apple     # builds the engine, then DevCleanKit tests (swift-testing)
 xcodebuild -project apple/DevClean.xcodeproj -scheme DevClean -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
 xcodebuild -project apple/DevClean.xcodeproj -scheme DevClean -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
 ```
 
-`apple/DevCleanKit` still holds a Swift copy of the scanner and policy; it is
-being replaced by the bundled TypeScript engine (`core/engine.ts`). Until
-then, a change to `rules/`, `core/` or `core/policy.ts` must be mirrored there.
-If you touch `apple/`, run the Swift tests and both builds.
+If you touch `core/`, `rules/` or `apple/`, also run `bun run test:apple` and
+both builds: the Swift apps run the same engine.
 
 ## Layout
 
@@ -48,7 +48,9 @@ If you touch `apple/`, run the Swift tests and both builds.
   move, `types.ts` defines the report contract, `paths.ts` replaces
   `node:path`. `engine.ts` is the portable entry point (for JavaScriptCore).
   `node.ts` is the Node host (`nodeHost`, `loadRules`, `scan`), and `index.ts`
-  is the Node-bound public API used by the CLI and Electron.
+  is the Node-bound public API used by the CLI and Electron. `jsc.ts` is the
+  JavaScriptCore entry (`globalThis.DevCleanEngine`, JSON in and out, rules
+  embedded at build time by `scripts/engine.ts`).
 - `cli/devclean.ts`: `devclean scan`, human text or `--json`. Analysis only.
 - `desktop/`: Electron. `main.ts` (IPC and dialogs), `scan.ts` plus
   `scan-worker.ts` (scan off the main thread), `cleanup.ts` (trusted side of
@@ -56,13 +58,16 @@ If you touch `apple/`, run the Swift tests and both builds.
   `preload.ts` (the `window.devclean` bridge), `renderer.ts` (sandboxed UI).
 - `scripts/build.ts`: bundles to `dist/` (main, preload and worker as CJS; the
   renderer as a browser script). `dist/` is generated, so don't edit or commit it.
-- `apple/`: native Swift apps. `DevCleanKit/` is a Swift package that ports
-  `core/` plus `core/policy.ts` (same rules from `rules/`, same report
-  contract, same cleanup policy). `DevClean.xcodeproj` builds one SwiftUI
-  target for macOS (scans and cleans, not sandboxed, bundles `rules/`) and
-  iPhone (read-only: opens reports exported from a Mac, since iOS can't see the
-  Mac's disk). The project uses a synchronized folder, so new files in
-  `apple/DevClean/` need no project edits.
+- `apple/`: native Swift apps that run the TypeScript engine in
+  JavaScriptCore; Swift holds no scanning rules or policy. `DevCleanKit/` has
+  `Engine.swift` (the bridge), `NativeHost.swift` (the Host: POSIX calls plus a
+  native `measure`, the hot loop), `Cleanup.swift` (the trusted side: identities,
+  tokens, Trash), `Report.swift` (the JSON contract as Codable) and
+  `Presentation.swift` (pt-BR labels, filters). `DevClean.xcodeproj` builds one
+  SwiftUI target for macOS (scans and cleans, not sandboxed) and iPhone (opens
+  reports exported from a Mac, since iOS can't see the Mac's disk). The project
+  uses a synchronized folder, so new files in `apple/DevClean/` need no project
+  edits.
 
 ## Safety invariants (do not weaken)
 
@@ -72,7 +77,9 @@ This tool deletes things on users' machines. Treat these as hard rules:
    be moved**. A rule never grants cleanup. Cleanup needs an explicit,
    home-relative entry in `targets`/`reviewTargets` (or `projectOutputs` with a
    marker file) in `policy.ts`. The trusted side of each app
-   (`desktop/cleanup.ts`, the Swift apps) applies that policy and does the move.
+   (`desktop/cleanup.ts`, `apple/DevCleanKit/.../Cleanup.swift`) applies that
+   policy and does the move. Identity checks and the move itself never run in
+   the engine.
 2. Cleanup only ever uses `shell.trashItem` (`FileManager.trashItem` in Swift).
    Never add permanent deletion (`rm`, `fs.rm`, `unlink`) of user paths, and
    never empty the Trash.

@@ -1,5 +1,5 @@
-// Cleanup policy, mirroring desktop/cleanup.test.ts. A fake trash records calls;
-// nothing is ever moved to the real Trash.
+// Cleanup through the engine's policy and the native trusted side, mirroring
+// desktop/cleanup.test.ts. A fake trash records calls; nothing reaches the real Trash.
 import Foundation
 import Testing
 @testable import DevCleanKit
@@ -10,6 +10,7 @@ private struct Fixture {
   var appRoot: String {dir("app")}
   let target: String
   let finding: Finding
+  let engine = try! makeEngine()
   init() {
     target = Paths.join(dir.path, ".npm/_cacache")
     makeFile(Paths.join(target, "cache"), 5)
@@ -21,8 +22,9 @@ private struct Fixture {
     return path
   }
   func prepare(_ findings: [Finding], now: Date = Date()) -> (report: Report, manifest: Cleanup.Manifest) {
-    Cleanup.prepare(Report(schemaVersion: 1, scannedAt: "", roots: [], options: ReportOptions(globalScan: false, maxDepth: 6, maxFindings: 500, excludes: [], categories: []),
-                           totals: buildTotals(findings), findings: findings, warnings: []), home: home, appRoot: appRoot, now: now)
+    try! Cleanup.prepare(Report(schemaVersion: 1, scannedAt: "", roots: [], options: ReportOptions(globalScan: false, maxDepth: 6, maxFindings: 500, excludes: [], categories: []),
+                           totals: Totals(findings: 0, bytes: 0, bySeverity: [:], byCategory: [:]), findings: findings, warnings: []),
+                     engine: engine, home: home, appRoot: appRoot, now: now)
   }
 }
 
@@ -30,15 +32,15 @@ private struct Fixture {
   @Test func movesOnlySelectedTargetsAndRefreshesTotals() throws {
     let fx = Fixture()
     var (report, manifest) = fx.prepare([fx.finding])
-    let items = try Cleanup.select(report, indices: [0, 0], token: report.cleanupToken)
+    let items = try Cleanup.select(report, indices: [0, 0], token: report.cleanupToken, engine: fx.engine)
     #expect(items.count == 1)
     var called: [String] = []
-    let outcome = try Cleanup.moveToTrash(items, manifest: &manifest) {called.append($0)}
+    let outcome = try Cleanup.moveToTrash(items, manifest: &manifest, engine: fx.engine) {called.append($0)}
     #expect(called == [fx.target])
-    let remaining = Cleanup.remainingReport(report, moved: outcome.moved.map(\.path))
+    let remaining = try Cleanup.remainingReport(report, moved: outcome.moved.map(\.path), engine: fx.engine)
     #expect(remaining.totals.bytes == 0 && remaining.findings.isEmpty)
     #expect(remaining.cleanupToken != report.cleanupToken)
-    #expect(throws: Cleanup.Failure.self) {try Cleanup.moveToTrash(items, manifest: &manifest) {_ in Issue.record("Repeated cleanup")}}
+    #expect(throws: Cleanup.Failure.self) {try Cleanup.moveToTrash(items, manifest: &manifest, engine: fx.engine) {_ in Issue.record("Repeated cleanup")}}
     report = remaining
     #expect(report.findings.isEmpty)
   }
@@ -55,17 +57,17 @@ private struct Fixture {
     for f in variants {
       let (report, _) = fx.prepare([f])
       #expect(report.findings[0].cleanupAllowed == false)
-      #expect(throws: Cleanup.Failure.self) {try Cleanup.select(report, indices: [0], token: report.cleanupToken)}
+      #expect(throws: (any Error).self) {try Cleanup.select(report, indices: [0], token: report.cleanupToken, engine: fx.engine)}
     }
   }
 
   @Test func rejectsSymlinksAndReplacedDirectories() throws {
     let fx = Fixture()
     var (report, manifest) = fx.prepare([fx.finding])
-    let items = try Cleanup.select(report, indices: [0], token: report.cleanupToken)
+    let items = try Cleanup.select(report, indices: [0], token: report.cleanupToken, engine: fx.engine)
     rename(fx.target, fx.target + "-old")
     symlink(fx.target + "-old", fx.target)
-    #expect(throws: Cleanup.Failure.self) {try Cleanup.moveToTrash(items, manifest: &manifest) {_ in Issue.record("Unsafe trash")}}
+    #expect(throws: Cleanup.Failure.self) {try Cleanup.moveToTrash(items, manifest: &manifest, engine: fx.engine) {_ in Issue.record("Unsafe trash")}}
     (report, _) = fx.prepare([fx.finding])
     #expect(report.findings[0].cleanupAllowed == false)
   }
@@ -73,9 +75,9 @@ private struct Fixture {
   @Test func rejectsInvalidIndicesAndOldTokens() {
     let fx = Fixture()
     let (report, _) = fx.prepare([fx.finding])
-    for indices in [[], [-1], [999]] {#expect(throws: Cleanup.Failure.self) {try Cleanup.select(report, indices: indices, token: report.cleanupToken)}}
-    #expect(throws: Cleanup.Failure.self) {try Cleanup.select(report, indices: [0], token: "old")}
-    #expect(throws: Cleanup.Failure.self) {try Cleanup.select(nil, indices: [0], token: report.cleanupToken)}
+    for indices in [[], [-1], [999]] {#expect(throws: (any Error).self) {try Cleanup.select(report, indices: indices, token: report.cleanupToken, engine: fx.engine)}}
+    #expect(throws: (any Error).self) {try Cleanup.select(report, indices: [0], token: "old", engine: fx.engine)}
+    #expect(throws: (any Error).self) {try Cleanup.select(nil, indices: [0], token: report.cleanupToken, engine: fx.engine)}
   }
 
   @Test func rejectsOverlappingSelections() throws {
@@ -88,7 +90,7 @@ private struct Fixture {
     }
     let (report, _) = fx.prepare([project("code/a"), project("code/a/node_modules/tool")])
     #expect(report.findings.map(\.cleanupAllowed) == [true, true])
-    #expect(throws: Cleanup.Failure("A seleção contém diretórios sobrepostos.")) {try Cleanup.select(report, indices: [0, 1], token: report.cleanupToken)}
+    #expect(throws: EngineError(message: "A seleção contém diretórios sobrepostos.")) {try Cleanup.select(report, indices: [0, 1], token: report.cleanupToken, engine: fx.engine)}
   }
 
   @Test func preservesFailedItemsOnPartialSuccess() throws {
@@ -96,10 +98,10 @@ private struct Fixture {
     var gradle = fx.finding
     gradle.ruleId = "gradle-cache"; gradle.path = fx.mkdir(".gradle/caches")
     var (report, manifest) = fx.prepare([fx.finding, gradle])
-    let items = try Cleanup.select(report, indices: [0, 1], token: report.cleanupToken)
-    let outcome = try Cleanup.moveToTrash(items, manifest: &manifest) {if $0 == gradle.path {throw Cleanup.Failure("Permission denied")}}
+    let items = try Cleanup.select(report, indices: [0, 1], token: report.cleanupToken, engine: fx.engine)
+    let outcome = try Cleanup.moveToTrash(items, manifest: &manifest, engine: fx.engine) {if $0 == gradle.path {throw Cleanup.Failure("Permission denied")}}
     #expect(outcome.moved.count == 1 && outcome.errors.count == 1)
-    report = Cleanup.remainingReport(report, moved: outcome.moved.map(\.path))
+    report = try Cleanup.remainingReport(report, moved: outcome.moved.map(\.path), engine: fx.engine)
     #expect(report.findings.map(\.path) == [gradle.path])
   }
 
@@ -169,9 +171,9 @@ private struct Fixture {
     #expect(report.findings.map(\.cleanupAllowed) == [true, true, true, true, false, false, false, false])
     #expect(report.findings.filter {$0.canClean}.allSatisfy {$0.cleanupReview == true && $0.autoClean == false})
     #expect(report.findings.filter {!$0.canClean}.allSatisfy {($0.cleanupReason ?? "").count > 10})
-    let items = try Cleanup.select(report, indices: [0, 2], token: report.cleanupToken)
+    let items = try Cleanup.select(report, indices: [0, 2], token: report.cleanupToken, engine: fx.engine)
     var called: [String] = []
-    _ = try Cleanup.moveToTrash(items, manifest: &manifest) {called.append($0)}
+    _ = try Cleanup.moveToTrash(items, manifest: &manifest, engine: fx.engine) {called.append($0)}
     #expect(called == [avd, ini, cacheFile])
   }
 }

@@ -59,6 +59,7 @@ dev-macos-clean/
 ├── package.json            # scripts (build, start, scan, test, typecheck), `devclean` bin
 ├── tsconfig.json           # strict TypeScript, type-checked with `tsc --noEmit`
 ├── scripts/build.ts        # bundles desktop/ + rules/ into dist/ for Electron
+├── scripts/engine.ts       # bundles core/ + rules/ into dist/engine/ for the Swift apps
 ├── rules/                  # one declarative rule per JSON file (data, not code)
 │   ├── node-modules.json
 │   ├── xcode-derived-data.json
@@ -68,6 +69,7 @@ dev-macos-clean/
 │   ├── engine.ts           # portable entry point (no Node APIs), for JavaScriptCore
 │   ├── host.ts             # Host: the disk operations the engine asks for
 │   ├── node.ts             # the Node host (fs) used by the CLI, Electron and tests
+│   ├── jsc.ts              # JavaScriptCore entry for the Swift apps (rules embedded)
 │   ├── paths.ts            # POSIX path helpers (node:path semantics)
 │   ├── rules.ts            # JSON -> rules + strict validation
 │   ├── filesystem.ts       # dirSize, bounded walk, glob/fnmatch, excludes, symlink safety
@@ -344,9 +346,11 @@ Sem interface: `bun run scan` (ou `bun run scan --category xcode`).
 
 ## Apps nativos em Swift (macOS e iPhone)
 
-`apple/` tem uma versão nativa em SwiftUI, um único projeto para Mac e iPhone,
-com o mesmo scanner, as mesmas regras de `rules/` e a mesma política de limpeza
-(pacote `apple/DevCleanKit`).
+`apple/` tem uma versão nativa em SwiftUI, um único projeto para Mac e iPhone.
+Ela roda o **mesmo motor TypeScript** do `core/` dentro do JavaScriptCore, com as
+regras de `rules/` embutidas: o Swift cuida da interface, do acesso ao disco e
+de mover para a Lixeira, e o TypeScript decide o que é cada item e o que pode
+ser limpo.
 
 - **Mac** — analisa o disco e limpa pela Lixeira, como o app Electron: confirmação
   que começa em **Cancelar**, revalidação de cada caminho antes de mover e nenhuma
@@ -358,10 +362,12 @@ com o mesmo scanner, as mesmas regras de `rules/` e a mesma política de limpeza
 
 ```bash
 open apple/DevClean.xcodeproj          # escolha "My Mac" ou um iPhone e rode
-cd apple/DevCleanKit && swift test     # testes do núcleo em Swift
+bun run test:apple                     # gera o motor e roda os testes Swift
 ```
 
-Para rodar num iPhone de verdade, selecione seu time em *Signing & Capabilities*.
+O build no Xcode precisa do Bun instalado: uma fase de build gera
+`devclean-engine.js` a partir do `core/` e coloca no app. Para rodar num iPhone
+de verdade, selecione seu time em *Signing & Capabilities*.
 O app de Mac não usa App Sandbox (precisa ler o disco inteiro) e, como o Electron,
 precisa de **Acesso Total ao Disco** para medir algumas pastas.
 

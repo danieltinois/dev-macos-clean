@@ -8,12 +8,11 @@
 
 /* Begin PBXBuildFile section */
 		D0C1EA000000000000000101 /* DevCleanKit in Frameworks */ = {isa = PBXBuildFile; productRef = D0C1EA000000000000000901 /* DevCleanKit */; };
-		D0C1EA000000000000000102 /* rules in Resources */ = {isa = PBXBuildFile; fileRef = D0C1EA000000000000000202 /* rules */; platformFilters = (macos, ); };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		D0C1EA000000000000000201 /* DevClean.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DevClean.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		D0C1EA000000000000000202 /* rules */ = {isa = PBXFileReference; lastKnownFileType = folder; name = rules; path = ../rules; sourceTree = "<group>"; };
+		D0C1EA000000000000000204 /* bundle-engine.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "bundle-engine.sh"; sourceTree = "<group>"; };
 		D0C1EA000000000000000203 /* DevCleanKit */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = DevCleanKit; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -38,7 +37,7 @@
 			children = (
 				D0C1EA000000000000000301 /* DevClean */,
 				D0C1EA000000000000000203 /* DevCleanKit */,
-				D0C1EA000000000000000202 /* rules */,
+				D0C1EA000000000000000204 /* bundle-engine.sh */,
 				D0C1EA000000000000000502 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -58,6 +57,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = D0C1EA000000000000000802 /* Build configuration list for PBXNativeTarget "DevClean" */;
 			buildPhases = (
+				D0C1EA000000000000000703 /* Bundle TypeScript engine */,
 				D0C1EA000000000000000701 /* Sources */,
 				D0C1EA000000000000000401 /* Frameworks */,
 				D0C1EA000000000000000702 /* Resources */,
@@ -114,11 +114,33 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				D0C1EA000000000000000102 /* rules in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		D0C1EA000000000000000703 /* Bundle TypeScript engine */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Bundle TypeScript engine";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/devclean-engine.js",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"$SRCROOT/bundle-engine.sh\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		D0C1EA000000000000000701 /* Sources */ = {
@@ -177,6 +199,7 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = DevClean;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
@@ -206,6 +229,7 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = DevClean;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";

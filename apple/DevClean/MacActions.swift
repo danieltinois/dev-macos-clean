@@ -13,14 +13,12 @@ extension AppModel {
     say("Analisando arquivos…")
     defer {busy = false}
     do {
-      guard let rulesURL = Bundle.main.url(forResource: "rules", withExtension: nil) else {throw Cleanup.Failure("Regras não encontradas no app.")}
       // Not sandboxed, so this is the real home; the app bundle itself is protected.
       let home = NSHomeDirectory(), appRoot = Bundle.main.bundlePath
+      // The TypeScript engine scans and decides; each task gets its own engine.
       let prepared = try await Task.detached(priority: .userInitiated) {
-        var options = ScanOptions()
-        options.home = home
-        options.globalScan = true
-        return Cleanup.prepare(DevCleanKit.scan(try loadRules(from: rulesURL), options: options), home: home, appRoot: appRoot)
+        let engine = try Engine.bundled(host: NativeHost(home: home))
+        return try Cleanup.prepare(engine.scan(ScanOptions(home: home, globalScan: true)), engine: engine, home: home, appRoot: appRoot)
       }.value
       manifest = prepared.manifest
       show(prepared.report)
@@ -40,13 +38,14 @@ extension AppModel {
     say("Validando seleção…")
     do {
       // Automatic cleanup always covers the whole report, never just the filtered view.
+      let engine = try Engine.bundled()
       let indices = automatic ? Selection.pick(Selection.visible(report.findings, Filters()), {$0.autoClean == true}) : Array(selected)
-      let items = try Cleanup.select(report, indices: indices, token: report.cleanupToken)
+      let items = try Cleanup.select(report, indices: indices, token: report.cleanupToken, engine: engine)
       if automatic && items.contains(where: {$0.autoClean != true}) {throw Cleanup.Failure("Item não autorizado para limpeza automática.")}
       try Cleanup.validate(items, manifest: manifest)
       guard confirm(items, automatic: automatic) else {return say("Limpeza cancelada")}
-      let outcome = try Cleanup.moveToTrash(items, manifest: &manifest, trash: Cleanup.systemTrash)
-      self.report = Cleanup.remainingReport(report, moved: outcome.moved.map(\.path))
+      let outcome = try Cleanup.moveToTrash(items, manifest: &manifest, engine: engine, trash: Cleanup.systemTrash)
+      self.report = try Cleanup.remainingReport(report, moved: outcome.moved.map(\.path), engine: engine)
       selected.removeAll()
       errors = outcome.errors.map {"\($0.path): \($0.message)"}
       writeShareCopy()

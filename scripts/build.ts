@@ -1,8 +1,10 @@
 // Builds the Electron app into dist/. Electron runs its own Node, so the main
 // process, preload and scan worker are bundled to CommonJS and the renderer to a
 // browser script. Rules and static assets are copied so dist/ is self-contained.
+// The engine bundle for the Swift apps (dist/engine/) is built too.
 import {cp, rm} from 'node:fs/promises';
 import path from 'node:path';
+import {writeEngine} from './engine';
 
 const root = path.resolve(import.meta.dirname, '..');
 const out = path.join(root, 'dist');
@@ -25,4 +27,5 @@ await bundle({
 await bundle({entrypoints: [path.join(desktop, 'renderer.ts')], outdir: path.join(out, 'desktop'), target: 'browser', format: 'iife'});
 for (const file of ['index.html', 'style.css']) await cp(path.join(desktop, file), path.join(out, 'desktop', file));
 await cp(path.join(root, 'rules'), path.join(out, 'rules'), {recursive: true});
+await writeEngine();
 console.log(`built ${path.relative(root, out)}/`);

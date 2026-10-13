@@ -41,9 +41,4 @@ enum Paths {
     guard let slash = trimmed.lastIndex(of: "/") else {return "."}
     return slash == trimmed.startIndex ? "/" : String(trimmed[..<slash])
   }
-
-  // True when `child` is `parent` or lies inside it.
-  static func isInside(_ child: String, _ parent: String) -> Bool {
-    child == parent || child.hasPrefix(parent == "/" ? "/" : parent + "/")
-  }
 }
