@@ -133,6 +133,13 @@ import Testing
     #expect(NativeHost.measure(dir("loop")) == Measurement(bytes: 2500, errors: 0, truncated: false))
     #expect(NativeHost.measure(dir("nope")) == Measurement(bytes: 0, errors: 1, truncated: false))
     #expect(NativeHost.measure(dir.path, maxEntries: 2).truncated)
+    // A sparse file (like Docker.raw) counts what it takes on disk, not its declared size.
+    let image = dir("vm/disk.raw")
+    makeFile(dir("vm/notes.txt"), 120)
+    FileManager.default.createFile(atPath: image, contents: nil)
+    truncate(image, 1 << 30)
+    #expect(NativeHost.measure(image).bytes < 1 << 20)
+    #expect(NativeHost.measure(dir("vm")).bytes < 1 << 20 && NativeHost.measure(dir("vm/notes.txt")).bytes == 120)
   }
 
   @Test func reportRoundTripsAndDecodesCLIOutput() throws {

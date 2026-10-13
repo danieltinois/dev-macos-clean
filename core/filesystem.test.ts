@@ -23,6 +23,22 @@ test('dirSize sums files', () => {
   assert.deepEqual(dirSize(dir), {bytes: 3500, errors: 0, truncated: false});
 });
 
+test('sparse files count what they take on disk, not what they declare', () => {
+  // Like a VM disk image (Docker.raw): 1 GiB declared, nothing written yet.
+  const root = tempDir(), image = path.join(root, 'vm', 'disk.raw');
+  buildTree(root, {'vm/notes.txt': 120});
+  const fd = fs.openSync(image, 'w');
+  fs.ftruncateSync(fd, 1024 ** 3);
+  fs.closeSync(fd);
+  assert.equal(fs.statSync(image).size, 1024 ** 3);
+  assert.ok(filesystem.measure(nodeHost, image).bytes < 1024 ** 2);
+  const total = filesystem.dirSize(nodeHost, path.join(root, 'vm')).bytes;
+  assert.ok(total >= 120 && total < 1024 ** 2, String(total));
+  // Small files keep their exact size, not a whole block; hosts that can't tell use the size.
+  assert.equal(filesystem.measure(nodeHost, path.join(root, 'vm', 'notes.txt')).bytes, 120);
+  assert.equal(filesystem.onDisk({kind: 'file', size: 500, mtimeMs: 0}), 500);
+});
+
 test('dirSize of an empty directory is zero', () => {
   assert.deepEqual(dirSize(tempDir()), {bytes: 0, errors: 0, truncated: false});
 });

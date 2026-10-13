@@ -28,12 +28,12 @@ final class TempDir {
   func callAsFunction(_ rel: String) -> String {Paths.join(path, rel)}
 }
 
-// Create a file of exactly `size` bytes (sparse, fast).
+// Create a file holding `size` real bytes (a truncated file would be sparse,
+// and sizes count what files take on disk).
 @discardableResult
 func makeFile(_ target: String, _ size: Int) -> String {
   try! FileManager.default.createDirectory(atPath: Paths.dirname(target), withIntermediateDirectories: true)
-  FileManager.default.createFile(atPath: target, contents: nil)
-  truncate(target, off_t(size))
+  FileManager.default.createFile(atPath: target, contents: Data(repeating: 0x78, count: size))
   return target
 }
 
