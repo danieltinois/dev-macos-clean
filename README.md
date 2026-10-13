@@ -20,9 +20,9 @@ environments — Xcode DerivedData, iOS simulators, Android SDK images and AVDs,
 Gradle caches, `node_modules`, package manager caches, and (in later phases)
 Docker, Flutter, Python, Rust, Homebrew and JetBrains artifacts.
 
-> **Status: scanner + Electron interface with recoverable cleanup.**
-> Written in TypeScript and developed with Bun — no Python, no runtime dependencies.
-> The CLI only analyzes. The desktop app can move selected, known
+> **Status: scanner + native Swift apps (macOS and iPhone) with recoverable cleanup.**
+> The engine is written in TypeScript and developed with Bun — no Python, no runtime
+> dependencies. The CLI only analyzes. The Mac app can move selected, known
 > regenerable caches to the macOS Trash after confirmation; it never empties Trash.
 
 ## Philosophy
@@ -32,8 +32,8 @@ Docker, Flutter, Python, Rust, Homebrew and JetBrains artifacts.
 - **Declarative rules first.** Most scanners are just data: a JSON file
   describing where to look, the risk, and how the artifact can be recreated.
   Specialized code is the exception, registered per rule id.
-- **Core independent of UI.** `core/` is pure domain logic with no Electron or
-  terminal code. The CLI and the desktop app consume the same core and the
+- **Core independent of UI.** `core/` is pure domain logic with no UI or
+  terminal code. The CLI and the Swift apps consume the same core and the
   same stable report contract.
 - **Bytes are the only truth.** All sizes are stored in bytes; human formatting
   happens only at the presentation layer.
@@ -56,9 +56,9 @@ context (e.g. an SDK another tool depends on) without touching rule files.
 
 ```
 dev-macos-clean/
-├── package.json            # scripts (build, start, scan, test, typecheck), `devclean` bin
+├── package.json            # scripts (build, scan, test, typecheck, test:apple), `devclean` bin
 ├── tsconfig.json           # strict TypeScript, type-checked with `tsc --noEmit`
-├── scripts/build.ts        # bundles desktop/ + rules/ into dist/ for Electron
+├── scripts/build.ts        # bundles the UI (desktop/) and the engine into dist/ for the Swift apps
 ├── scripts/engine.ts       # bundles core/ + rules/ into dist/engine/ for the Swift apps
 ├── rules/                  # one declarative rule per JSON file (data, not code)
 │   ├── node-modules.json
@@ -68,7 +68,7 @@ dev-macos-clean/
 │   ├── index.ts            # public API on this machine: loadRules, scan, formatBytes, formatAgo
 │   ├── engine.ts           # portable entry point (no Node APIs), for JavaScriptCore
 │   ├── host.ts             # Host: the disk operations the engine asks for
-│   ├── node.ts             # the Node host (fs) used by the CLI, Electron and tests
+│   ├── node.ts             # the Node host (fs) used by the CLI and tests
 │   ├── jsc.ts              # JavaScriptCore entry for the Swift apps (rules embedded)
 │   ├── paths.ts            # POSIX path helpers (node:path semantics)
 │   ├── rules.ts            # JSON -> rules + strict validation
@@ -83,31 +83,29 @@ dev-macos-clean/
 ├── cli/
 │   ├── devclean.ts         # `devclean scan` (human text or --json)
 │   └── devclean.test.ts
-└── desktop/                # Electron app
-    ├── main.ts             # main process: window, IPC handlers, confirmation dialogs
-    ├── scan.ts             # runs core/ in a worker thread (main process never blocks)
-    ├── scan-worker.ts      # worker entry: loads rules, scans, posts the report
-    ├── cleanup.ts          # applies core/policy.ts: identity checks, tokens, move to Trash
-    ├── preload.ts          # minimal bridge exposed to the page
-    ├── index.html, renderer.ts, style.css   # sandboxed UI, no Node access
-    └── *.test.ts
+├── desktop/                # the web UI shown by the Swift apps (sandboxed, no Node access)
+│   ├── index.html, renderer.ts, style.css
+│   ├── bridge.ts           # the window.devclean contract and the report the shell hands over
+│   ├── platform.ts         # what differs between Mac and iPhone
+│   └── *.test.ts
+└── apple/                  # Swift apps for macOS and iPhone (see below)
+    ├── DevClean/           # the app: WebShell (WKWebView), Mac and iPhone actions
+    └── DevCleanKit/        # engine bridge, native host, cleanup, photos, Files folders
 ```
 
-Bun runs the CLI and the tests straight from the `.ts` sources. Electron ships its
-own Node.js, so `bun run build` bundles the main process, preload and scan worker
-to CommonJS (and the renderer to a browser script) in `dist/`, together with a
-copy of `rules/`. The bundler inlines `__dirname`, so desktop code resolves its
-files at runtime from `app.getAppPath()` instead.
+Bun runs the CLI and the tests straight from the `.ts` sources. `bun run build`
+bundles the renderer to a browser script and the engine (with the rules embedded)
+for JavaScriptCore in `dist/`; an Xcode build phase copies both into the app.
 
-How a scan flows through the app:
+How a scan flows through the Mac app:
 
-1. `renderer.ts` calls `window.devclean.scan()`; `preload.ts` forwards it over IPC.
-2. `main.ts` asks `scan.ts`, which starts a worker thread that runs
-   `core.scan(core.loadRules(rulesDir), {globalScan: true})` and posts the report back
-   (5-minute timeout).
-3. `cleanup.prepare()` marks each finding `cleanup_allowed` / `cleanup_review` /
-   `auto_clean` against the allowlist in `core/policy.ts` and records the identity (inode, mtime)
-   of every cleanable path.
+1. `renderer.ts` calls `window.devclean.scan()`; `WebShell.swift` receives it as
+   a script message from the page's main frame.
+2. The shell runs the bundled engine in JavaScriptCore off the main thread, with
+   `NativeHost` doing the disk access: `scan(rules, {globalScan: true})`.
+3. `Cleanup.prepare` marks each finding `cleanup_allowed` / `cleanup_review` /
+   `auto_clean` from `core/policy.ts` and records the identity (realpath, device,
+   inode, mtime, ctime) of every cleanable path.
 4. On cleanup, the selection is checked again (token, allowlist, identity,
    no symlinks), confirmed in a native dialog, and moved to the Trash.
 
@@ -154,8 +152,7 @@ file** — no code changes needed. Specialized logic registers by rule id in
 
 ## Installation (development)
 
-Requires [Bun](https://bun.sh) 1.2+ (Electron is installed as a dev dependency and
-downloads its binary on first launch).
+Requires [Bun](https://bun.sh) 1.2+, and Xcode for the Swift apps.
 
 ```bash
 bun install
@@ -228,7 +225,7 @@ DevClean only analyzes storage. Nothing was deleted.
 
 ### JSON contract (`devclean scan --json`)
 
-Stable shape, also what the desktop app receives (`schema_version: 1`):
+Stable shape, also what the apps receive (`schema_version: 1`):
 
 ```json
 {
@@ -279,18 +276,19 @@ Stable shape, also what the desktop app receives (`schema_version: 1`):
   "last used") — computing the newest mtime inside would be much slower.
 - **One problematic directory never aborts a scan**: permission and IO errors
   are logged and collected in `report.warnings`, when meaningful.
-- Scans are synchronous and sequential inside one worker thread, so the
-  Electron main process stays responsive. Parallelism is deliberately deferred —
-  the walk caps already bound the work.
+- Scans are synchronous and sequential on a background task, so the app stays
+  responsive. Parallelism is deliberately deferred — the walk caps already bound
+  the work.
 
 ## Roadmap
 
 - **Phase 1 (complete)** — Core scanner + CLI. Rules for Node.js, Xcode (DerivedData)
   and Android (Gradle cache, system images, AVDs). Analysis only, no deletion.
-- **Phase 2 (available in Electron)** — Selected known regenerable caches moved
-  to Trash after native confirmation, with path and identity validation.
-- **Phase 3 (development interface available)** — Electron desktop app running
-  the core in-process (worker thread). Python scanner ported to Node, then to TypeScript on Bun.
+- **Phase 2 (complete)** — Selected known regenerable caches moved to Trash
+  after native confirmation, with path and identity validation.
+- **Phase 3 (complete)** — Desktop interface, first in Electron, now in native
+  Swift apps for macOS and iPhone that run the same TypeScript engine. Python
+  scanner ported to Node, then to TypeScript on Bun.
 - **Phase 4** — Advanced scanners: Docker, Flutter, Python (venvs, pip cache),
   Rust `target`, Maven, Homebrew, JetBrains, VSCode.
 - **Phase 5** — Developer Storage Intelligence: old project detection,
@@ -303,20 +301,21 @@ Stable shape, also what the desktop app receives (`schema_version: 1`):
   bounded and excludes protected system directories and external volumes.
 - Measurements are scans, not `du`-equivalent block usage (report-size vs
   disk-size differences are expected).
-- CLI is analysis only. Desktop cleanup uses Trash for authorized low-risk
+- CLI is analysis only. The Mac app's cleanup uses the Trash for authorized
   artifacts; no permanent deletion, symlink following or parallel scanning.
 
-## macOS app (Electron)
+## macOS app
 
-A local interface in Brazilian Portuguese that runs the `core/` scanner directly
-in the app. It offers search, filters by tool and risk, sorting, rebuild details,
-Show in Finder, JSON export and cleanup of known caches through the Trash.
+A local interface in Brazilian Portuguese that runs the `core/` scanner inside
+the native Swift app. It offers search, filters by tool and risk, sorting,
+rebuild details, Show in Finder, JSON export and cleanup of known caches through
+the Trash.
 
 ### Quick start
 
 ```bash
 bun install
-bun start       # builds to dist/, opens the app and starts the scan
+open apple/DevClean.xcodeproj   # pick "My Mac" and run; the app scans as it opens
 ```
 
 On first launch, Floco (the cat mascot) gives a guided tour of the app and only
@@ -349,8 +348,8 @@ runs the **same TypeScript engine** from `core/` inside JavaScriptCore, with the
 rules from `rules/` embedded: Swift handles disk access and moving items to the
 Trash, and TypeScript decides what each item is and what may be cleaned.
 
-- **Mac** — shows **the same interface as the Electron app** (Floco, tutorial,
-  animations) in a native WebView, without Electron. It scans the disk and cleans
+- **Mac** — shows the shared interface (Floco, tutorial, animations) in a
+  native WebView. It scans the disk and cleans
   through the Trash with the same rules: a confirmation that defaults to
   **Cancelar**, revalidation of every path before moving it, and no permanent
   deletion.
@@ -376,7 +375,7 @@ Trash, and TypeScript decides what each item is and what may be cleaned.
   Cancelar. iOS doesn't let any app see other apps' data or System Data.
 - **Mac and iPhone** — a panel shows the disk space: what is in use, what
   DevClean found, what the system frees by itself (Swift app only), and how much
-  is free now and after cleanup. The Electron app and the CLI also show free space.
+  is free now and after cleanup. The CLI also shows free space.
 
 ```bash
 open apple/DevClean.xcodeproj          # pick "My Mac" or an iPhone and run
@@ -386,8 +385,8 @@ bun run test:apple                     # builds the engine and runs the Swift te
 Building in Xcode needs Bun installed: a build phase builds the interface
 (`desktop/`) and `devclean-engine.js` (`core/`) and copies both into the app. To
 run on a real iPhone, select your team in *Signing & Capabilities*.
-The Mac app doesn't use App Sandbox (it needs to read the whole disk) and, like
-the Electron app, needs **Full Disk Access** to measure some folders.
+The Mac app doesn't use App Sandbox (it needs to read the whole disk) and needs
+**Full Disk Access** to measure some folders.
 
 ### What is detected
 
@@ -423,15 +422,17 @@ tools before cleaning their dependencies.
 Finder if needed; emptying the Trash is up to the user. Partial failures are
 shown, and the items that failed stay in the report.
 
-The renderer runs sandboxed, with context isolation and an IPC bridge limited to
-specific operations. Paths sent to the Finder come only from the last report.
-There is no HTTP server and no remote content in the interface.
+The page runs sandboxed in a WKWebView, served from the app's own `devclean://`
+scheme with a strict CSP, and talks to the app through a bridge limited to
+specific operations that only take indices into the last report. Paths sent to
+the Finder come only from that report. There is no HTTP server and no remote
+content in the interface.
 
-This version runs from the checkout; it doesn't ship a `.dmg` installer, signing
-or notarization yet. Since there is no Python anymore, packaging the app needs no
-bundled interpreter.
+This version is built from the checkout with Xcode; it doesn't ship a `.dmg`
+installer, signing or notarization yet.
 
-Validation: `bun test` (core, CLI and Electron) and `bun run typecheck`.
+Validation: `bun test` (core, CLI and UI), `bun run typecheck` and
+`bun run test:apple` (Swift).
 
 Mascot: ASCII cat generated by `scripts/cat-art.ts` from the photo
 ["Domestic Cat White"](https://commons.wikimedia.org/wiki/File:Domestic_Cat_White.JPG)

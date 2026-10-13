@@ -1,5 +1,5 @@
 // Everything the engine needs from the machine. core/ never touches the disk
-// itself: core/node.ts implements this for the CLI and Electron, and the Swift
+// itself: core/node.ts implements this for the CLI and tests, and the Swift
 // apps implement it natively when they run the bundled engine.
 export type EntryKind = 'file' | 'dir' | 'symlink' | 'other';
 export interface Entry {name: string; kind: EntryKind}

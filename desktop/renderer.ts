@@ -5,8 +5,7 @@ import {diskParts} from './disk';
 import {currentPlatform} from './platform';
 import {pick, visible, where, type Filters, type Indexed} from './selection';
 import {createTutorial, stepsFor, tourSeen, CAT_NAME} from './tutorial';
-import type {CleanupFinding, CleanupReport} from './cleanup';
-import type {DevcleanBridge} from './preload';
+import type {CleanupFinding, CleanupReport, DevcleanBridge} from './bridge';
 
 declare global {interface Window {devclean: DevcleanBridge}}
 
@@ -19,7 +18,7 @@ const names: Record<string, string> = {node:'Node.js', xcode:'Xcode', android:'A
 const platform = currentPlatform(window.devclean.platform);
 function ageDays(f: CleanupFinding) {const t = Date.parse(f.last_modified ?? '');return Number.isNaN(t) ? null : Math.floor((Date.now()-t)/86400000);}
 function ago(days: number | null) {if (days === null) return '';if (days < 1) return 'hoje';if (days < 31) return `há ${days} dia(s)`;if (days < 365) return `há ${Math.floor(days/30)} mês(es)`;return `há ${(days/365).toLocaleString('pt-BR',{maximumFractionDigits:1})} ano(s)`;}
-// auto_clean comes from the main process, which owns the cleanup policy.
+// auto_clean comes from the native shell, which owns the cleanup policy.
 const isStale = (f: CleanupFinding) => f.auto_clean && Boolean(f.metadata?.project);
 // "Safe" is what may go to the Trash without review; everything else needs a look.
 const isSafe = (f: CleanupFinding) => f.cleanup_allowed && !f.cleanup_review;

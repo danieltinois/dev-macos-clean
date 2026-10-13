@@ -1,5 +1,5 @@
 // The macOS window and its answers to window.devclean: scan the disk with the
-// TypeScript engine and move confirmed items to the Trash, like desktop/main.ts.
+// TypeScript engine and move confirmed items to the Trash.
 // Cleanup starts only from the user's click; the confirmation defaults to Cancelar.
 #if os(macOS)
 import AppKit
@@ -13,8 +13,7 @@ struct DesktopWindow: View {
   var body: some View {
     ShellView(shell: shell)
       .ignoresSafeArea()
-      // The page's title bar is drawn in HTML; this makes it drag the window,
-      // like `-webkit-app-region: drag` does in Electron.
+      // The page's title bar is drawn in HTML; this makes it drag the window.
       .overlay(alignment: .top) {
         Color.clear.frame(height: 52).contentShape(Rectangle()).gesture(WindowDragGesture()).allowsWindowActivationEvents(true)
       }

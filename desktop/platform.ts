@@ -1,5 +1,5 @@
-// What differs between the shells that run this UI: Electron and the Swift app
-// on macOS ('mac'), and the iPhone app ('ios'). The shell says which one it is
+// What differs between the shells that run this UI: the Swift app on macOS
+// ('mac') and on the iPhone ('ios'). The shell says which one it is
 // through `window.devclean.platform`; everything else in the UI is shared.
 export type PlatformId = 'mac' | 'ios';
 
@@ -62,7 +62,7 @@ export const PLATFORMS: Record<PlatformId, Platform> = {
   },
 };
 
-// The platform the shell reports; Electron reports none, so it is the Mac.
+// The platform the shell reports; anything else is the Mac.
 export function currentPlatform(reported: unknown): Platform {
   return reported === 'ios' ? PLATFORMS.ios : PLATFORMS.mac;
 }

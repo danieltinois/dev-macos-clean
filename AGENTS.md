@@ -1,8 +1,9 @@
 # AGENTS.md
 
 Guide for AI coding agents working on DevClean, a macOS developer-storage
-analyzer: a scanner/CLI (`core/`, `cli/`) and an Electron app (`desktop/`) that
-moves known regenerable caches to the Trash. The README covers product details;
+analyzer: a scanner/CLI (`core/`, `cli/`) and native Swift apps for macOS and
+iPhone (`apple/`) that run the same engine and a shared web UI (`desktop/`), and
+move known regenerable caches (or, on the iPhone, photos and files) to the Trash. The README covers product details;
 this file covers how to work on the code.
 
 ## Commands
@@ -10,13 +11,12 @@ this file covers how to work on the code.
 Bun 1.2+ is the package manager, runtime and test runner. Don't use npm/npx/node.
 
 ```bash
-bun install            # dependencies (Electron downloads its binary on first launch)
+bun install            # dev dependencies (TypeScript, Bun types)
 bun test               # all tests (bun:test); `bun test core/scanner.test.ts` for one file
 bun run typecheck      # tsc --noEmit, strict; must pass, tests don't type-check
 bun run scan --json    # run the CLI from source (analysis only, safe to run)
-bun run build          # bundle desktop/ + rules/ into dist/ (and the engine, see below)
+bun run build          # bundle the UI (desktop/) and the engine into dist/ for the Swift apps
 bun run build:engine   # bundle core/ + rules/ for JavaScriptCore: dist/engine/devclean-engine.js
-bun start              # build, then open the Electron app (it scans the whole Mac on launch)
 ```
 
 Before finishing a change, run `bun test` and `bun run typecheck`. If you touch
@@ -41,29 +41,30 @@ both builds: the Swift apps run the same engine.
 - `rules/*.json`: one declarative rule per file (`id`, `category`, `severity`,
   `paths` and/or `patterns`, optional `markers` and `rebuild`). `core/rules.ts`
   validates them strictly: unknown keys, bad slugs or duplicate ids fail loading.
-- `core/`: the engine. Pure domain logic, no Electron, **never deletes**, and
+- `core/`: the engine. Pure domain logic, no UI, **never deletes**, and
   no disk access of its own: everything goes through a `Host` (`host.ts`).
   `scanner.ts` orchestrates, `filesystem.ts` walks and measures, `analyzer.ts`
   holds per-rule enrichers and totals, `policy.ts` decides what cleanup may
   move, `types.ts` defines the report contract, `paths.ts` replaces
   `node:path`. `engine.ts` is the portable entry point (for JavaScriptCore).
   `node.ts` is the Node host (`nodeHost`, `loadRules`, `scan`), and `index.ts`
-  is the Node-bound public API used by the CLI and Electron. `jsc.ts` is the
+  is the Node-bound public API used by the CLI and tests. `jsc.ts` is the
   JavaScriptCore entry (`globalThis.DevCleanEngine`, JSON in and out, rules
   embedded at build time by `scripts/engine.ts`).
 - `cli/devclean.ts`: `devclean scan`, human text or `--json`. Analysis only.
-- `desktop/`: Electron. `main.ts` (IPC and dialogs), `scan.ts` plus
-  `scan-worker.ts` (scan off the main thread), `cleanup.ts` (trusted side of
-  cleanup: identities, tokens, Trash),
-  `preload.ts` (the `window.devclean` bridge), `renderer.ts` (sandboxed UI).
-- `scripts/build.ts`: bundles to `dist/` (main, preload and worker as CJS; the
-  renderer as a browser script). `dist/` is generated, so don't edit or commit it.
+- `desktop/`: the web UI the Swift apps show (the name is historical).
+  `index.html`, `style.css` and `renderer.ts` (sandboxed page), `bridge.ts`
+  (the `window.devclean` contract and the report the shell hands over),
+  `platform.ts` (Mac vs iPhone texts), plus `selection.ts`, `disk.ts`,
+  `tutorial.ts`, `mascot.ts` and `motion.ts`.
+- `scripts/build.ts`: bundles the renderer as a browser script and copies the
+  HTML and CSS to `dist/desktop/`, and writes the engine to `dist/engine/`.
+  `dist/` is generated, so don't edit or commit it.
 - `apple/`: the native Swift app. It runs the TypeScript engine in
-  JavaScriptCore and, on macOS and iPhone, the **same UI as Electron**
-  (`desktop/index.html`, `renderer.ts`, `style.css`) in a WKWebView, so Swift
-  holds no rules, policy or UI of its own. `DevClean/WebShell.swift` is the
-  shared shell (the counterpart of `main.ts` + `preload.ts`: `window.devclean`
-  over script messages, plus `platform`; long scans push `devclean-progress`
+  JavaScriptCore and, on macOS and iPhone, the web UI (`desktop/index.html`,
+  `renderer.ts`, `style.css`) in a WKWebView, so Swift holds no rules, policy
+  or UI of its own. `DevClean/WebShell.swift` is the shared shell
+  (`window.devclean` over script messages, plus `platform`; long scans push `devclean-progress`
   events to the page). `DesktopWindow.swift` (`MacActions`:
   disk and Trash) and `PhoneWindow.swift` (`PhoneActions`: photo library and
   Recently Deleted) answer its calls. `desktop/platform.ts` holds the texts
@@ -92,26 +93,23 @@ This tool deletes things on users' machines. Treat these as hard rules:
    be moved**. A rule never grants cleanup. Cleanup needs an explicit,
    home-relative entry in `targets`/`reviewTargets` (or `projectOutputs` with a
    marker file) in `policy.ts`; photo and Files items need their rule in
-   `photoTargets`/`fileTargets` and are always REVIEW (Files: regular files only). The trusted side of each app
-   (`desktop/cleanup.ts`, `apple/DevCleanKit/.../Cleanup.swift`) applies that
-   policy and does the move. Identity checks and the move itself never run in
+   `photoTargets`/`fileTargets` and are always REVIEW (Files: regular files
+   only). The trusted side (`apple/DevCleanKit/.../Cleanup.swift` and the
+   `ShellActions` in `apple/DevClean/`) applies that policy and does the move. Identity checks and the move itself never run in
    the engine.
-2. Cleanup only ever uses `shell.trashItem` (`FileManager.trashItem` in Swift).
-   Never add permanent deletion (`rm`, `fs.rm`, `unlink`) of user paths, and
+2. Cleanup only ever uses `FileManager.trashItem`. Never add permanent
+   deletion (`removeItem`, `rm`, `unlink`) of user paths, and
    never empty the Trash. Photos only go through `PHAssetChangeRequest.deleteAssets`,
    which the system confirms and which keeps them in Recently Deleted; never
    empty that album.
 3. Before trashing, each target is revalidated against the identity captured at
    scan time (realpath, dev, inode, mtime, ctime), and symlinks anywhere in the
    path are rejected. Keep `prepare` → `select` → `validate` → `moveToTrash`.
-4. IPC handlers in `main.ts` must call `trusted(event)`, accept only indices into
-   the last report plus its `cleanup_token`, and never accept raw paths from the
-   renderer. The Swift shell does the same: `WebShell.swift` only answers
-   our page's main frame, and `BridgeRequest` accepts nothing but indices,
-   the token and `automatic === true`. Picked folders come only from the system
+4. The page never sends paths. `WebShell.swift` only answers our page's main
+   frame, and `BridgeRequest` accepts nothing but indices into the last report,
+   its `cleanup_token` and `automatic === true`. Picked folders come only from the system
    picker (`addFolder`), and the iPhone only trashes files inside them.
-5. The renderer stays sandboxed: `contextIsolation`, no `nodeIntegration`, a
-   strict CSP, and no remote content. In the Swift shell the page is served
+5. The page stays sandboxed: a strict CSP and no remote content. It is served
    from the `devclean://` scheme (only the three UI files), can't navigate
    elsewhere and can't open windows.
 6. Only the user's own clicks start cleanup. The confirmation dialog defaults to
@@ -122,12 +120,10 @@ This tool deletes things on users' machines. Treat these as hard rules:
 ## Gotchas
 
 - **`bun build` inlines `__dirname`, `__filename` and `import.meta.dirname` as
-  the build machine's absolute paths.** Bundled desktop code must resolve files
-  at runtime (`app.getAppPath()` in `main.ts`) and pass them in, as `scan()`
-  does with `ScanPaths`. `import.meta.dirname` is fine in code that only runs
-  from source under Bun (CLI, tests, `core` defaults).
-- Electron runs its own Node, not Bun. Code under `desktop/` (besides tests)
-  must not use `Bun.*` APIs. `core/` must also run in JavaScriptCore, so it
+  the build machine's absolute paths.** `import.meta.dirname` is fine only in
+  code that runs from source under Bun (CLI, tests, `core` defaults).
+- The UI (`desktop/`, besides tests) runs in WKWebView: browser APIs only, no
+  `node:` modules or `Bun.*`. `core/` must also run in JavaScriptCore, so it
   uses no `node:` modules, `process` or `Bun.*` at all, except in `node.ts`
   and `index.ts`. `core/engine.test.ts` enforces this.
 - The JSON report (`schema_version: 1`) is a stable contract. Key order of
@@ -146,7 +142,7 @@ This tool deletes things on users' machines. Treat these as hard rules:
    recreates it with no manual step. Add a label in `renderer.ts` `names` for a
    new category.
 3. Cover it in `core/scanner.test.ts` (detection) and, if cleanable,
-   `desktop/cleanup.test.ts` (policy).
+   `core/policy.test.ts` (policy).
 
 ## Code style
 
@@ -155,7 +151,7 @@ This tool deletes things on users' machines. Treat these as hard rules:
 - Match the existing compact style: 2-space indent, single quotes, semicolons,
   `{a, b}` without inner spaces, short one-line helpers. Comments explain *why*
   and stay sparse.
-- Code, comments, CLI output and commit messages are in English. The desktop UI
+- Code, comments, CLI output and commit messages are in English. The app UI
   and its error messages are in Brazilian Portuguese (`pt-BR`), and so are rule
   `name`/`description` fields.
 - No runtime dependencies. Think twice before adding any devDependency.

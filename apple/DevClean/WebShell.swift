@@ -1,6 +1,6 @@
-// The shell shared by macOS and iPhone: the same UI as the Electron app
-// (desktop/index.html, renderer.ts, style.css) in a WKWebView, with
-// `window.devclean` answered natively, like desktop/main.ts + preload.ts.
+// The shell shared by macOS and iPhone: the web UI (desktop/index.html,
+// renderer.ts, style.css) in a WKWebView, with `window.devclean`
+// (desktop/bridge.ts) answered natively.
 //
 // The page stays sandboxed: it is served from the devclean:// scheme (only the
 // three UI files), can't navigate or open windows, and only sends indices into
@@ -92,7 +92,7 @@ final class WebShell: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDel
   // MARK: window.devclean
 
   func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) async -> (Any?, String?) {
-    // Like trusted() in main.ts: only our page's main frame may call.
+    // Only our page's main frame may call.
     guard message.webView === webView, message.frameInfo.isMainFrame, message.frameInfo.securityOrigin.protocol == UIFiles.scheme else {return (nil, "Origem inválida")}
     do {
       switch try BridgeRequest(message.body) {

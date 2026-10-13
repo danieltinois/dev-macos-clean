@@ -11,7 +11,7 @@
 }
 * { box-sizing: border-box; }
 body { margin: 0; }
-.titlebar { height: 52px; padding: 0 24px 0 92px; background: #15171a; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; -webkit-app-region: drag; font-family: var(--mono); font-size: 12px; }
+.titlebar { height: 52px; padding: 0 24px 0 92px; background: #15171a; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; font-family: var(--mono); font-size: 12px; }
 .brand { font-weight: 600; color: #e3e5e8; }
 .version { color: #818791; margin-left: 12px; font-size: 10px; font-weight: 400; }
 .mode { color: #818791; font-size: 10px; }

@@ -1,11 +1,10 @@
 {
-  "name": "devclean-desktop",
+  "name": "devclean",
   "version": "0.1.0",
   "private": true,
-  "description": "DevClean macOS developer storage analyzer",
+  "description": "DevClean developer storage analyzer: engine, CLI and the UI of the Swift apps",
   "license": "MIT",
   "type": "module",
-  "main": "dist/desktop/main.cjs",
   "bin": {
     "devclean": "cli/devclean.ts"
   },
@@ -15,7 +14,6 @@
   "scripts": {
     "build": "bun scripts/build.ts",
     "build:engine": "bun scripts/engine.ts",
-    "start": "bun run build && electron .",
     "scan": "bun cli/devclean.ts scan",
     "test": "bun test",
     "test:apple": "bun scripts/test-apple.ts",
@@ -23,7 +21,6 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "electron": "^42.0.0",
     "typescript": "^5.9.0"
   }
 }
