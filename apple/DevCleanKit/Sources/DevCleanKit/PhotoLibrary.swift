@@ -38,8 +38,10 @@ public enum PhotoLibrary {
     let similar = similarGroups(assets, progress: progress)
     // PhotoKit hands out autoreleased objects; draining them per item keeps large
     // libraries within an iPhone's memory limit (the system kills the app otherwise).
-    return assets.map {asset in
-      autoreleasepool {
+    // Reading each item's files is slow on older iPhones, so it reports progress too.
+    return assets.enumerated().map {index, asset in
+      if index % 200 == 0 {progress("Medindo fotos e vídeos… \(index) de \(assets.count)")}
+      return autoreleasepool {
         var item = describe(asset, cloud: cloud)
         item["favorite"] = asset.isFavorite
         item["similar"] = similar[asset.localIdentifier]?.group ?? NSNull()
@@ -162,8 +164,26 @@ public enum PhotoLibrary {
     guard path.hasPrefix(prefix), let asset = PHAsset.fetchAssets(withLocalIdentifiers: [String(path.dropFirst(prefix.count))], options: nil).firstObject else {
       throw Cleanup.Failure("A foto não existe mais. Analise novamente.")
     }
-    return "\(asset.localIdentifier):\(asset.modificationDate?.timeIntervalSince1970 ?? 0)"
+    return identityString(asset)
   }
+
+  // Identities of many items with one fetch per 500, for Cleanup.prepare right
+  // after a scan. Missing items are left out. Cleanup still checks each item
+  // again, one by one, right before deleting it.
+  public static func identities(_ paths: [String]) -> [String: String] {
+    let ids = paths.compactMap {$0.hasPrefix(prefix) ? String($0.dropFirst(prefix.count)) : nil}
+    var result: [String: String] = [:]
+    for start in stride(from: 0, to: ids.count, by: 500) {
+      autoreleasepool {
+        PHAsset.fetchAssets(withLocalIdentifiers: Array(ids[start..<min(start + 500, ids.count)]), options: nil).enumerateObjects {asset, _, _ in
+          result[prefix + asset.localIdentifier] = identityString(asset)
+        }
+      }
+    }
+    return result
+  }
+
+  private static func identityString(_ asset: PHAsset) -> String {"\(asset.localIdentifier):\(asset.modificationDate?.timeIntervalSince1970 ?? 0)"}
 
   // A local file to preview the item with, downloading it from iCloud if needed.
   // Videos come as the library's own file; photos are copied to a temporary file

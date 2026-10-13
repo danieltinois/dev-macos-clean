@@ -45,10 +45,18 @@ final class PhoneActions: ShellActions {
     let home = NSHomeDirectory(), appRoot = Bundle.main.bundlePath, folders = picked
     let progress: @Sendable (String) -> Void = {[weak shell] text in Task {@MainActor in shell?.progress(text)}}
     var prepared = try await Task.detached(priority: .userInitiated) {
-      let engine = try Engine.bundled(host: NativeHost(home: home, photos: {try PhotoLibrary.assets(progress: progress)}, files: {PickedFolders.items(in: folders)}))
+      let engine = try Engine.bundled(host: NativeHost(home: home, photos: {try PhotoLibrary.assets(progress: progress)}, files: {PickedFolders.items(in: folders, progress: progress)}))
       var options = ScanOptions(home: home, sources: ["photos", "files"])
       options.maxFindings = 5000
-      return try Cleanup.prepare(engine.scan(options), engine: engine, home: home, appRoot: appRoot, identity: Self.identity)
+      let report = try engine.scan(options)
+      // Photo identities in one go: one fetch per item is slow with thousands of findings.
+      progress("Conferindo \(report.findings.count) itens…")
+      let photos = PhotoLibrary.identities(report.findings.map(\.path))
+      return try Cleanup.prepare(report, engine: engine, home: home, appRoot: appRoot) {path in
+        guard path.hasPrefix(PhotoLibrary.prefix) else {return try Cleanup.fileIdentity(path)}
+        guard let identity = photos[path] else {throw Cleanup.Failure("A foto não existe mais. Analise novamente.")}
+        return identity
+      }
     }.value
     if PhotoLibrary.hasLimitedAccess {
       prepared.report.warnings.append("Acesso limitado: o DevClean só vê as fotos que você liberou. Ajustes › DevClean › Fotos › Acesso Total.")

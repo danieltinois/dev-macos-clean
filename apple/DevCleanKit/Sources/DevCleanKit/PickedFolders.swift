@@ -51,7 +51,8 @@ public enum PickedFolders {
   }
 
   // Regular files in `folders` (no symlinks, hidden files or package contents).
-  public static func items(in folders: [PickedFolder]) -> [[String: Any]] {
+  // `progress` gets status lines (pt-BR) while big folders are walked.
+  public static func items(in folders: [PickedFolder], progress: @Sendable (String) -> Void = {_ in}) -> [[String: Any]] {
     let keys: [URLResourceKey] = [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey, .contentModificationDateKey, .isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey]
     var list: [[String: Any]] = [], seen = Set<String>()
     for folder in folders {
@@ -60,6 +61,7 @@ public enum PickedFolders {
       // One autorelease pool per file, so walking a big folder stays within memory limits.
       while let next = autoreleasepool(invoking: {walk.nextObject()}) {
         if list.count >= maxItems {return list}
+        if list.count % 500 == 0 {progress("Lendo pastas do Arquivos… \(list.count) arquivos")}
         autoreleasepool {
           guard let url = next as? URL, let values = try? url.resourceValues(forKeys: Set(keys)), values.isRegularFile == true, values.isSymbolicLink != true,
                 let path = NativeHost.realpath(url.path), seen.insert(path).inserted else {return}
