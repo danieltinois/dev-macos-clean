@@ -2,7 +2,7 @@
 
 Guide for AI coding agents working on DevClean, a macOS developer-storage
 analyzer: a scanner/CLI (`core/`, `cli/`) and native Swift apps for macOS and
-iPhone (`apple/`) that run the same engine and a shared web UI (`ui/`), and
+iPhone (`apple/`) that run the same engine with a native SwiftUI interface, and
 move known regenerable caches (or, on the iPhone, photos and files) to the Trash. The README covers product details;
 this file covers how to work on the code.
 
@@ -15,12 +15,12 @@ bun install            # dev dependencies (TypeScript, Bun types)
 bun test               # all tests (bun:test); `bun test core/scanner.test.ts` for one file
 bun run typecheck      # tsc --noEmit, strict; must pass, tests don't type-check
 bun run scan --json    # run the CLI from source (analysis only, safe to run)
-bun run build          # bundle the UI (ui/) and the engine into dist/ for the Swift apps
+bun run build          # bundle the engine into dist/engine/ for the Swift apps
 bun run build:engine   # bundle core/ + rules/ for JavaScriptCore: dist/engine/devclean-engine.js
 ```
 
 Before finishing a change, run `bun test` and `bun run typecheck`. If you touch
-`ui/` or `scripts/build.ts`, also run `bun run build`.
+`scripts/`, also run `bun run build`.
 
 The Swift apps under `apple/` need Xcode and Bun (an Xcode build phase runs
 `apple/bundle-resources.sh`, which builds the UI and the engine). Prefix commands with
@@ -52,38 +52,34 @@ both builds: the Swift apps run the same engine.
   JavaScriptCore entry (`globalThis.DevCleanEngine`, JSON in and out, rules
   embedded at build time by `scripts/engine.ts`).
 - `cli/devclean.ts`: `devclean scan`, human text or `--json`. Analysis only.
-- `ui/`: the web UI the Swift apps show.
-  `index.html`, `style.css` and `renderer.ts` (sandboxed page), `bridge.ts`
-  (the `window.devclean` contract and the report the shell hands over),
-  `platform.ts` (Mac vs iPhone texts), plus `selection.ts`, `disk.ts`,
-  `tutorial.ts`, `mascot.ts` and `motion.ts`.
-- `scripts/build.ts`: bundles the renderer as a browser script and copies the
-  HTML and CSS to `dist/ui/`, and writes the engine to `dist/engine/`.
-  `dist/` is generated, so don't edit or commit it.
+- `scripts/build.ts`: writes the engine to `dist/engine/`. `dist/` is
+  generated, so don't edit or commit it.
 - `apple/`: the native Swift app. It runs the TypeScript engine in
-  JavaScriptCore and, on macOS and iPhone, the web UI (`ui/index.html`,
-  `renderer.ts`, `style.css`) in a WKWebView, so Swift holds no rules, policy
-  or UI of its own. `DevClean/WebShell.swift` is the shared shell
-  (`window.devclean` over script messages, plus `platform`; long scans push `devclean-progress`
-  events to the page). `DesktopWindow.swift` (`MacActions`:
-  disk and Trash) and `PhoneWindow.swift` (`PhoneActions`: photo library and
-  Recently Deleted) answer its calls. `ui/platform.ts` holds the texts
-  and buttons that differ per platform. `DevCleanKit/` has `Engine.swift` (the
+  JavaScriptCore, so Swift holds no rules or policy. The interface is SwiftUI,
+  shared by macOS and iPhone (`DevClean/`): `AppModel.swift` (state and flows),
+  `MainView.swift`, `OverviewViews.swift`, `ResultsViews.swift`,
+  `DetailsView.swift` and `TourView.swift` (the screens), `Mascot.swift` (Floco),
+  `Ascii.swift` (ASCII art and its motion; the art itself comes from the engine,
+  `core/cat.ts` and `core/ascii.ts`) and `Theme.swift` (colors, type, sizes and
+  breakpoints). `MacActions.swift` (disk and Trash) and `PhoneActions.swift`
+  (photo library, Files folders, Recently Deleted) are each platform's `Actions`.
+  `DevCleanKit/` has `Presentation.swift` (texts per platform, labels, filters
+  and selection, disk parts, the tour; no views), `Engine.swift` (the
   JavaScriptCore bridge), `NativeHost.swift` (the Host: POSIX calls plus a
   native `measure`, the hot loop, `storage`, and optional `photos` and `files`),
   `PhotoLibrary.swift` (PhotoKit: list, identity, delete, similar-photo analysis),
   `SimilarPhotos.swift` (Vision feature prints and scores, testable on the Mac),
   `PickedFolders.swift`
   (folders picked in the Files app, kept as bookmarks), `Cleanup.swift` (the trusted side:
-  identities, tokens, Trash), `Bridge.swift` (validates page requests, builds
-  replies and the confirmation) and `Report.swift`. The project uses a
+  identities, tokens, Trash), `Confirmation.swift` (the Mac's cleanup alert) and
+  `Report.swift`. The project uses a
   synchronized folder, so new files in `apple/DevClean/` need no project edits.
 - Photo rules (`rules/*.json` with `photos` instead of `paths`) match items the
   host lists (`Host.photos()`, iPhone only) and report them as
   `photos://<localIdentifier>`, with the file name in `metadata.label`. File rules
   (`files`) do the same for files in folders picked in the Files app
   (`Host.files()`), with real paths. `report.storage` is the volume's space
-  (`Host.storage()`), shown in the disk panel (`ui/disk.ts`).
+  (`Host.storage()`), shown in the disk panel (`DiskParts` in `Presentation.swift`).
 
 ## Safety invariants (do not weaken)
 
@@ -105,13 +101,11 @@ This tool deletes things on users' machines. Treat these as hard rules:
 3. Before trashing, each target is revalidated against the identity captured at
    scan time (realpath, dev, inode, mtime, ctime), and symlinks anywhere in the
    path are rejected. Keep `prepare` → `select` → `validate` → `moveToTrash`.
-4. The page never sends paths. `WebShell.swift` only answers our page's main
-   frame, and `BridgeRequest` accepts nothing but indices into the last report,
-   its `cleanup_token` and `automatic === true`. Picked folders come only from the system
+4. The interface never hands paths to the trusted side. `Actions` take only
+   indices into the last report plus its `cleanup_token`, and the trusted side
+   re-selects them through the engine. Picked folders come only from the system
    picker (`addFolder`), and the iPhone only trashes files inside them.
-5. The page stays sandboxed: a strict CSP and no remote content. It is served
-   from the `devclean://` scheme (only the three UI files), can't navigate
-   elsewhere and can't open windows.
+5. No web content: the app shows no web view and loads nothing remote.
 6. Only the user's own clicks start cleanup. The confirmation dialog defaults to
    **Cancelar** (on the iPhone too, for Files items; photos get the system's own
    confirmation), and REVIEW items are never `auto_clean`. The iPhone has no
@@ -122,8 +116,7 @@ This tool deletes things on users' machines. Treat these as hard rules:
 - **`bun build` inlines `__dirname`, `__filename` and `import.meta.dirname` as
   the build machine's absolute paths.** `import.meta.dirname` is fine only in
   code that runs from source under Bun (CLI, tests, `core` defaults).
-- The UI (`ui/`, besides tests) runs in WKWebView: browser APIs only, no
-  `node:` modules or `Bun.*`. `core/` must also run in JavaScriptCore, so it
+- `core/` must run in JavaScriptCore, so it
   uses no `node:` modules, `process` or `Bun.*` at all, except in `node.ts`
   and `index.ts`. `core/engine.test.ts` enforces this.
 - The JSON report (`schema_version: 1`) is a stable contract. Key order of
@@ -139,7 +132,7 @@ This tool deletes things on users' machines. Treat these as hard rules:
    `ide`, or a new one).
 2. If it's a low-risk regenerable cache, add its fixed home-relative path to
    `targets` in `core/policy.ts`. Add it to `automatic` only if the tool
-   recreates it with no manual step. Add a label in `renderer.ts` `names` for a
+   recreates it with no manual step. Add a label in `Presentation.swift` `Labels.categories` for a
    new category.
 3. Cover it in `core/scanner.test.ts` (detection) and, if cleanable,
    `core/policy.test.ts` (policy).

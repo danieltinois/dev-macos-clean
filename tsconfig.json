@@ -15,5 +15,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["core", "cli", "ui", "scripts"]
+  "include": ["core", "cli", "scripts"]
 }
