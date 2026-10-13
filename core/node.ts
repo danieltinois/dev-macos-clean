@@ -14,7 +14,7 @@ function kind(entry: fs.Dirent | fs.Stats): EntryKind {
   return entry.isSymbolicLink() ? 'symlink' : entry.isDirectory() ? 'dir' : entry.isFile() ? 'file' : 'other';
 }
 function info(read: () => fs.Stats): Info | null {
-  try {const stats = read(); return {kind: kind(stats), size: stats.size, mtimeMs: stats.mtimeMs};} catch {return null;}
+  try {const stats = read(); return {kind: kind(stats), size: stats.size, mtimeMs: stats.mtimeMs, allocated: stats.blocks * 512};} catch {return null;}
 }
 
 export const nodeHost: Host = {

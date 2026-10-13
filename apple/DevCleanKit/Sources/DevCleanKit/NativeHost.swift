@@ -91,7 +91,7 @@ public struct NativeHost: Sendable {
 
   private static func info(_ info: stat) -> [String: Any] {
     let m = info.st_mtimespec
-    return ["kind": kind(info.st_mode), "size": Double(info.st_size), "mtimeMs": Double(m.tv_sec) * 1000 + Double(m.tv_nsec) / 1_000_000]
+    return ["kind": kind(info.st_mode), "size": Double(info.st_size), "allocated": Double(info.st_blocks) * 512, "mtimeMs": Double(m.tv_sec) * 1000 + Double(m.tv_nsec) / 1_000_000]
   }
 
   // readdir(3) without `.`/`..`. d_type avoids one lstat per entry; DT_UNKNOWN falls back to lstat.
@@ -144,7 +144,7 @@ public struct NativeHost: Sendable {
         if entry.kind == "symlink" {continue}
         let child = current == "/" ? "/" + entry.name : current + "/" + entry.name
         if entry.kind == "dir" {total += walk(child, depth + 1)}
-        else if let info = lstatInfo(child) {total += Int(info.st_size)}
+        else if let info = lstatInfo(child) {total += onDisk(info)}
         else {errors += 1}
       }
       return total
@@ -156,8 +156,12 @@ public struct NativeHost: Sendable {
   static func measure(_ target: String, maxEntries: Int = 500_000, maxDepth: Int = 64) -> Measurement {
     if let info = statInfo(target), info.st_mode & S_IFMT == S_IFDIR {return dirSize(target, maxEntries: maxEntries, maxDepth: maxDepth)}
     guard let info = lstatInfo(target) else {return Measurement(bytes: 0, errors: 1, truncated: false)}
-    return Measurement(bytes: Int(info.st_size), errors: 0, truncated: false)
+    return Measurement(bytes: onDisk(info), errors: 0, truncated: false)
   }
+
+  // core/filesystem.ts onDisk(): the size, or the allocated blocks when fewer
+  // (sparse files like a VM disk image, compressed files).
+  static func onDisk(_ info: stat) -> Int {min(Int(info.st_size), Int(info.st_blocks) * 512)}
 }
 
 extension NativeHost.ReadError: LocalizedError {var errorDescription: String? {message}}

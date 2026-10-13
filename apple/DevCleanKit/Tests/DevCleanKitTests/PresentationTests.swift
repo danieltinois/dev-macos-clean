@@ -26,6 +26,15 @@ import Testing
     #expect(Selection.visible(findings, Filters(query: ".ANDROID")).map(\.index) == [2])
   }
 
+  @Test func onlyOnDeviceHidesWhatIsOnlyInICloud() {
+    var cloud = finding("photos://a", category: "videos")
+    cloud.metadata["on_device"] = "no"
+    let list = [finding("photos://b", category: "videos"), cloud]
+    #expect(Selection.visible(list, Filters()).map(\.index) == [0, 1])
+    #expect(Selection.visible(list, Filters(onDeviceOnly: true)).map(\.index) == [0])
+    #expect(!cloud.onDevice && list[0].onDevice && Filters(onDeviceOnly: true).isActive)
+  }
+
   @Test func selectingAllOnlyPicksCleanableItemsInsideTheFilter() {
     #expect(Selection.pick(Selection.visible(findings, Filters()), {_ in true}) == [0, 2, 1])
     #expect(Selection.pick(Selection.visible(findings, Filters(category: "xcode")), {_ in true}) == [1])
@@ -74,8 +83,8 @@ import Testing
 
   @Test func theIPhoneTourTalksAboutTheIPhone() {
     let steps = Tour.steps(for: .ios), text = steps.map {$0.text(scanned: true)}.joined(separator: " ")
-    #expect(steps.contains {$0.targets.contains(.auto)} && steps.contains {$0.targets.contains(.addFolder)})
-    #expect(Platform.ios.automatic && !Platform.ios.staleProjects && Platform.mac.staleProjects)
+    #expect(!steps.contains {$0.targets.contains(.auto)} && steps.contains {$0.targets.contains(.addFolder)})
+    #expect(!Platform.ios.automatic && !Platform.ios.staleProjects && Platform.mac.automatic && Platform.mac.staleProjects)
     #expect(text.contains("iPhone") && !text.contains("Mac") && !text.contains("Finder") && !text.contains("Lixeira"))
     #expect(Tour.steps(for: .mac).contains {$0.targets.contains(.auto)})
   }

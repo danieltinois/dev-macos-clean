@@ -266,6 +266,9 @@ Stable shape, also what the apps receive (`schema_version: 1`):
 - **Size**: `dirSize` walks with `readdir`, never follows symlinks, counts
   per-entry permission errors and continues, and caps entries per directory
   (500,000). A capped measurement is reported as `size_complete: false`.
+  Each file counts the smaller of its size and its allocated blocks, so sparse
+  files (a VM disk image such as `Docker.raw`, which declares hundreds of GB)
+  count what they really take on disk, while small files keep their exact size.
 - **`last_modified`** is the mtime of the directory itself (a cheap proxy for
   "last used") — computing the newest mtime inside would be much slower.
 - **One problematic directory never aborts a scan**: permission and IO errors
@@ -293,8 +296,8 @@ Stable shape, also what the apps receive (`schema_version: 1`):
 
 - Global discovery covers supported artifact categories on the local disk; it is
   bounded and excludes protected system directories and external volumes.
-- Measurements are scans, not `du`-equivalent block usage (report-size vs
-  disk-size differences are expected).
+- Measurements are scans: close to `du`, but small files count their exact size
+  rather than whole blocks, and hard links or APFS clones count once per path.
 - CLI is analysis only. The Mac app's cleanup uses the Trash for authorized
   artifacts; no permanent deletion, symlink following or parallel scanning.
 
@@ -348,32 +351,40 @@ Trash, and TypeScript decides what each item is and what may be cleaned.
   **Cancelar**, revalidation of every path before moving it, and no permanent
   deletion.
 - **iPhone** — the same interface, adapted to the phone screen. iOS gives no
-  access to the disk or to other apps' data, so the iPhone app looks at what
-  takes space **on the phone** in the **whole photo library**: videos of 50 MB or
-  more, photos of 15 MB or more (ProRAW, panoramas), byte-identical copies
-  (checked by content hash), **similar
-  photos** (retakes of the same moment, compared on the device with Apple's Vision;
+  access to the disk or to other apps' data, so the iPhone app scans the **whole
+  photo library**: videos of 50 MB or more, photos of 15 MB or more (ProRAW,
+  panoramas), byte-identical copies (checked by content hash), **similar photos**
+  (retakes of the same moment, compared on the device with Apple's Vision;
   favorites or the best-rated one stay), screenshots, screen recordings and extra
-  burst frames. Items whose original is only in
-  iCloud take no space on the phone, so they are left out. For items both on the
-  iPhone and in iCloud, it points to **Optimize iPhone Storage**, which removes
-  the original from the iPhone without deleting it.
-  **Limpeza automática** (automatic cleanup) takes only what loses nothing:
-  identical copies (the oldest stays) and burst frames nobody picked (the key
-  photo stays). Everything else is for review: you pick the items. Either way iOS
-  asks for its own confirmation, and they go to **Photos › Recently Deleted**,
-  where they stay for 30 days. With limited photo access, the app only
-  sees the photos you allowed. **Abrir para conferir** (open to check) in the
-  details opens the item in Quick Look.
+  burst frames.
+  Like other cleaner apps it lists items whose original is **only in iCloud**
+  too, since deleting them frees iCloud space, but marks them with ☁, counts
+  them apart ("No iPhone" vs "só no iCloud") and leaves them out of the disk
+  panel; **Só o que ocupa o iPhone** in the filters hides them. iOS has no public
+  flag for this, so the app reads the start of each original with downloads off
+  to tell. For items both on the iPhone and in iCloud, it points to **Optimize
+  iPhone Storage**, which removes the original from the iPhone without deleting it.
+  **Revisar fotos** (review photos) lists each set (copies, burst extras, similar
+  photos, big videos, screenshots…) and opens it full screen: a grid of
+  thumbnails, with copies and similar photos grouped around the one that stays,
+  or a quick mode that shows one photo at a time (swipe left to delete, right to
+  keep). Copies, burst extras and similar photos start selected; nothing is
+  cleaned automatically. Whatever is picked goes in one go: iOS asks for its own
+  confirmation, and items go to **Photos › Recently Deleted** for 30 days. With
+  limited photo access, the app only sees the photos you allowed.
+  **Abrir para conferir** (open to check) in the details opens the item in Quick Look.
+  The slow steps (measuring items, comparing similar photos, hashing possible
+  copies) run on every core, and what they learn about each photo is kept between
+  scans, so later scans only work on new or edited photos.
   With **+ Pasta do Arquivos** (add a Files folder) you pick one or more folders
   from the Files app; picking **On My iPhone** and **iCloud Drive** covers
   everything iOS lets an app see, including the folders other apps share there.
-  It looks for files of 50 MB or more stored on the iPhone, duplicate files
-  (same content hash, whatever the name), caches and temporary files of apps,
-  installers and archives (`.zip`, `.ipa`, `.dmg`…), log files and downloads
-  older than 30 days. These are always for review and go to **Recently Deleted**
-  in the Files app, after a confirmation that defaults to Cancelar. iOS doesn't
-  let any app see other apps' private data, their caches or System Data.
+  It looks for files of 50 MB or more, duplicate files (same content hash,
+  whatever the name), caches and temporary files of apps, installers and archives
+  (`.zip`, `.ipa`, `.dmg`…), log files and downloads older than 30 days. These are
+  always for review and go to **Recently Deleted** in the Files app, after a
+  confirmation that defaults to Cancelar. iOS doesn't let any app see other apps'
+  private data, their caches or System Data.
 - **Mac and iPhone** — a panel shows the disk space: what is in use, what
   DevClean found, what the system frees by itself (Swift app only), and how much
   is free now and after cleanup. The CLI also shows free space.
@@ -398,7 +409,7 @@ The Mac app doesn't use App Sandbox (it needs to read the whole disk) and needs
 | Android / Java | Gradle caches, Gradle Wrapper | System images, AVDs, Maven repository |
 | Rust / Go / Python / Dart | `target/` of Cargo projects, Cargo registry, Go build and modules, pip, pub cache | |
 | IDEs / other | JetBrains and Android Studio caches, Homebrew | Docker (`docker system prune`), app caches, logs, Downloads |
-| iPhone (photos and Files) | Identical photo copies, extra burst frames | Large videos and photos, similar photos, screenshots, screen recordings, large and duplicate files, app caches, installers, logs, old downloads |
+| iPhone (photos and Files) | | Identical photo copies, extra burst frames, large videos and photos, similar photos, screenshots, screen recordings, large and duplicate files, app caches, installers, logs, old downloads |
 
 To add a new tool, add a JSON file in `rules/` and, if its cleanup is low risk,
 its fixed path in `core/policy.ts`.

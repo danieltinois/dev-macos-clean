@@ -94,10 +94,11 @@ public enum PickedFolders {
       bySize[bytes, default: []].append(index)
     }
     let candidates = bySize.values.filter {$0.count > 1}.flatMap {$0}
-    for (done, index) in candidates.enumerated() {
-      if done % 20 == 0 {progress("Conferindo arquivos duplicados… \(done) de \(candidates.count)")}
-      list[index]["digest"] = autoreleasepool {(list[index]["path"] as? String).flatMap(digest)} ?? NSNull()
+    let paths = candidates.map {list[$0]["path"] as? String}
+    let digests = Parallel.map(candidates.count, every: 20, progress: {progress("Conferindo arquivos duplicados… \($0) de \(candidates.count)")}) {i in
+      paths[i].flatMap(digest)
     }
+    for (i, index) in candidates.enumerated() {list[index]["digest"] = digests[i] ?? NSNull()}
   }
 
   // SHA-256 of a file, read in 1 MB chunks; nil when it can't be read.

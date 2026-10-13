@@ -3,7 +3,10 @@
 // apps implement it natively when they run the bundled engine.
 export type EntryKind = 'file' | 'dir' | 'symlink' | 'other';
 export interface Entry {name: string; kind: EntryKind}
-export interface Info {kind: EntryKind; size: number; mtimeMs: number}
+// `size` is what the file says it holds; `allocated` is what it takes on disk
+// (st_blocks * 512), when the host knows. Sparse files (a VM disk image) hold far
+// less than their size, and compressed ones too.
+export interface Info {kind: EntryKind; size: number; mtimeMs: number; allocated?: number}
 export interface Measurement {bytes: number; errors: number; truncated: boolean}
 export interface SizeOptions {maxEntries?: number; maxDepth?: number}
 

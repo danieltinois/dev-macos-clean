@@ -97,9 +97,12 @@ import Testing
     ]}
     let engine = try Engine(script: String(contentsOf: engineURL, encoding: .utf8), host: NativeHost(home: "/nonexistent", photos: library))
     let report = try engine.scan(ScanOptions(home: "/nonexistent", sources: ["photos"]))
-    // The video only in iCloud takes no space on the iPhone, so it is not a finding.
-    #expect(report.findings.map(\.ruleId).sorted() == ["large-videos", "screenshots"])
-    #expect(report.findings.first {$0.ruleId == "large-videos"}?.path == "photos://V/L0/001")
+    // The video only in iCloud is listed too, marked so the app can badge and filter it.
+    #expect(report.findings.map(\.ruleId).sorted() == ["large-videos", "large-videos", "screenshots"])
+    #expect(report.findings.filter {!$0.onDevice}.map(\.path) == ["photos://C/L0/001"])
+    // The app's precise check can mark more items after the scan.
+    let marked = try engine.markOnlyInCloud(report, paths: ["photos://V/L0/001"])
+    #expect(Set(marked.findings.filter {!$0.onDevice}.map(\.path)) == ["photos://C/L0/001", "photos://V/L0/001"])
     #expect(report.findings.first {$0.ruleId == "screenshots"}?.metadata["label"] == "IMG_0200.PNG")
     #expect(report.warnings == [] && report.roots == [])
     let decisions = try engine.decide(report, home: "/nonexistent", appRoot: "/app", now: Date())
@@ -133,6 +136,13 @@ import Testing
     #expect(NativeHost.measure(dir("loop")) == Measurement(bytes: 2500, errors: 0, truncated: false))
     #expect(NativeHost.measure(dir("nope")) == Measurement(bytes: 0, errors: 1, truncated: false))
     #expect(NativeHost.measure(dir.path, maxEntries: 2).truncated)
+    // A sparse file (like Docker.raw) counts what it takes on disk, not its declared size.
+    let image = dir("vm/disk.raw")
+    makeFile(dir("vm/notes.txt"), 120)
+    FileManager.default.createFile(atPath: image, contents: nil)
+    truncate(image, 1 << 30)
+    #expect(NativeHost.measure(image).bytes < 1 << 20)
+    #expect(NativeHost.measure(dir("vm")).bytes < 1 << 20 && NativeHost.measure(dir("vm/notes.txt")).bytes == 120)
   }
 
   @Test func reportRoundTripsAndDecodesCLIOutput() throws {

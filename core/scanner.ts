@@ -72,25 +72,27 @@ function ruleFor(host: Host, target: string, patternRules: Rule[]) {
 // duration and bytes. The oldest copy of each group stays out.
 // When the host hashed the content (`digest`), only identical bytes count, and an
 // item it couldn't read (null) is never a copy.
-export function duplicateExtras(assets: PhotoAsset[]): Set<string> {
+export function duplicateExtras(assets: PhotoAsset[]): Map<string, PhotoAsset> {
   const keyed = assets.filter(asset => asset.bytes !== null && asset.width && asset.height && asset.digest !== null)
     .map(asset => [`${asset.media} ${asset.width}x${asset.height} ${asset.duration_ms ?? 0} ${asset.bytes} ${asset.digest ?? ''}`, asset] as const);
   return oldestKept(keyed, asset => asset.created_ms, asset => asset.id);
 }
 
-// Ids of files with the same content (size and SHA-256) as an older file. Files
-// the host didn't hash never count: names alone say nothing about content.
-export function duplicateFileExtras(items: FileItem[]): Set<string> {
+// Files with the same content (size and SHA-256) as an older file, by path, each
+// with the file that stays. Files the host didn't hash never count: names alone
+// say nothing about content.
+export function duplicateFileExtras(items: FileItem[]): Map<string, FileItem> {
   return oldestKept(items.filter(item => item.digest).map(item => [`${item.bytes} ${item.digest}`, item] as const), item => item.modified_ms, item => item.path);
 }
 
-// In each group of equal keys, every item but the oldest.
-function oldestKept<T>(keyed: (readonly [string, T])[], time: (item: T) => number, id: (item: T) => string): Set<string> {
+// In each group of equal keys, every item but the oldest, with the oldest (which stays).
+function oldestKept<T>(keyed: (readonly [string, T])[], time: (item: T) => number, id: (item: T) => string): Map<string, T> {
   const groups = new Map<string, T[]>();
   for (const [key, item] of keyed) groups.set(key, [...groups.get(key) ?? [], item]);
-  const extras = new Set<string>();
+  const extras = new Map<string, T>();
   for (const group of groups.values()) {
-    group.sort((a, b) => time(a) - time(b) || compare(id(a), id(b))).slice(1).forEach(item => extras.add(id(item)));
+    const [keeper, ...rest] = group.sort((a, b) => time(a) - time(b) || compare(id(a), id(b)));
+    for (const item of rest) extras.set(id(item), keeper!);
   }
   return extras;
 }
@@ -110,8 +112,21 @@ export function similarExtras(assets: PhotoAsset[]): Map<string, PhotoAsset> {
   return extras;
 }
 
-// Where the original is, for the details dialog (items only in iCloud never get here).
+// The photo that stays for a copy or a similar photo: its name ('Fica', shown in
+// the details) and its path (`keeper`, so the app can show the group together).
+function keeperOf(keeper: PhotoAsset | undefined): Record<string, string> {
+  return keeper ? {'Fica': keeper.name, keeper: PHOTO_PREFIX + keeper.id} : {};
+}
+
+// Items only in iCloud are listed too (deleting them frees iCloud, which people
+// pay for), marked `on_device: no` so the app can badge, count and filter them.
+export const ONLY_IN_ICLOUD = 'Só no iCloud. O iPhone guarda só uma versão leve, então apagar libera espaço no iCloud, quase nada no iPhone.';
+const ONLY_IN_ICLOUD_DRIVE = 'Só no iCloud Drive, sem cópia no iPhone. Apagar libera espaço no iCloud, não no iPhone.';
+const inCloudOnly = (text: string) => ({'Onde está': text, on_device: 'no'});
+
+// Where the original is, for the details dialog.
 function storedAt({local, cloud}: PhotoAsset): string | null {
+  if (local === false) return ONLY_IN_ICLOUD;
   if (local && cloud) return 'No iPhone e no iCloud. Para tirar do iPhone sem apagar, ligue Ajustes › Fotos › Otimizar Armazenamento do iPhone.';
   if (local && cloud === false) return 'Só no iPhone, sem cópia no iCloud. Apagar remove a única cópia.';
   return null;
@@ -119,7 +134,7 @@ function storedAt({local, cloud}: PhotoAsset): string | null {
 
 // Whether a photo library item meets every criterion of `match`. `extras` and
 // `similar` come from duplicateExtras() and similarExtras().
-export function photoMatches(match: PhotoMatch, asset: PhotoAsset, now: number, extras: Set<string> = new Set(), similar: Map<string, PhotoAsset> = new Map()): boolean {
+export function photoMatches(match: PhotoMatch, asset: PhotoAsset, now: number, extras: Map<string, PhotoAsset> = new Map(), similar: Map<string, PhotoAsset> = new Map()): boolean {
   return (!match.media || asset.media === match.media) &&
     (!match.subtype || asset.subtypes.includes(match.subtype)) &&
     (!match.burst || asset.burst === match.burst) &&
@@ -130,7 +145,7 @@ export function photoMatches(match: PhotoMatch, asset: PhotoAsset, now: number, 
 }
 
 // Whether a file from a picked folder meets every criterion of `match`. `extras` comes from duplicateFileExtras().
-export function fileMatches(match: FileMatch, item: FileItem, now: number, extras: Set<string> = new Set()): boolean {
+export function fileMatches(match: FileMatch, item: FileItem, now: number, extras: Map<string, FileItem> = new Map()): boolean {
   const folders = path.dirname(item.path).split('/'), name = path.basename(item.path), dot = name.lastIndexOf('.');
   return (!match.folders || match.folders.some(folder => folders.includes(folder))) &&
     (!match.extensions || (dot > 0 && match.extensions.includes(name.slice(dot + 1).toLowerCase()))) &&
@@ -140,6 +155,7 @@ export function fileMatches(match: FileMatch, item: FileItem, now: number, extra
 }
 
 function fileStoredAt({local, cloud}: FileItem): string | null {
+  if (local === false) return ONLY_IN_ICLOUD_DRIVE;
   if (local && cloud) return 'No iPhone e no iCloud Drive. Para tirar do iPhone sem apagar, toque e segure o arquivo no app Arquivos e escolha Remover Download.';
   if (local && cloud === false) return 'Só no iPhone, sem cópia no iCloud. Apagar remove a única cópia.';
   return null;
@@ -215,15 +231,12 @@ export function scan(host: Host, rules: Rule[], options: Partial<ScanOptions> = 
   }
 
   // 3. Photo library items, on hosts that list them. The first matching rule wins.
-  // Items only in iCloud take no space on the device, so they never become findings;
-  // they still count as the original when looking for copies.
   const photoRules = opts.sources.includes('photos') && host.photos ? selected.filter(rule => rule.photos) : [];
   if (photoRules.length && !full()) {
     let assets: PhotoAsset[] = [];
     try {assets = host.photos!();} catch (error) {warnings.push(`cannot read photos: ${(error as Error).message}`);}
     const now = opts.now ?? Date.now(), extras = duplicateExtras(assets), similar = similarExtras(assets);
     for (const asset of assets) {
-      if (asset.local === false) continue;
       const rule = photoRules.find(rule => photoMatches(rule.photos!, asset, now, extras, similar));
       if (!rule) continue;
       if (full()) {stopped(); break;}
@@ -233,20 +246,18 @@ export function scan(host: Host, rules: Rule[], options: Partial<ScanOptions> = 
         reclaimable: rule.reclaimable, description: rule.description, path: PHOTO_PREFIX + asset.id,
         size_bytes: asset.bytes ?? 0, size_complete: asset.bytes !== null,
         last_modified: new Date(asset.created_ms).toISOString(), rebuild: rule.rebuild,
-        metadata: {label: asset.name, ...stored ? {'Onde está': stored} : {}, ...rule.photos!.similar ? {'Fica': similar.get(asset.id)!.name} : {}},
+        metadata: {label: asset.name, ...stored ? {'Onde está': stored} : {}, ...asset.local === false ? {on_device: 'no'} : {}, ...keeperOf(rule.photos!.similar ? similar.get(asset.id) : rule.photos!.duplicate ? extras.get(asset.id) : undefined)},
       });
     }
   }
 
-  // 4. Files in the folders the user picked, on hosts that list them. Like photos,
-  // files only in iCloud Drive take no space on the device and are skipped.
+  // 4. Files in the folders the user picked, on hosts that list them.
   const fileRules = opts.sources.includes('files') && host.files ? selected.filter(rule => rule.files) : [];
   if (fileRules.length && !full()) {
     let items: FileItem[] = [];
     try {items = host.files!();} catch (error) {warnings.push(`cannot read picked folders: ${(error as Error).message}`);}
     const now = opts.now ?? Date.now(), extras = duplicateFileExtras(items);
     for (const item of items) {
-      if (item.local === false) continue;
       const rule = fileRules.find(rule => fileMatches(rule.files!, item, now, extras));
       if (!rule) continue;
       if (full()) {stopped(); break;}
@@ -255,7 +266,7 @@ export function scan(host: Host, rules: Rule[], options: Partial<ScanOptions> = 
         rule_id: rule.id, name: rule.name, category: rule.category, severity: analyzer.classify(rule),
         reclaimable: rule.reclaimable, description: rule.description, path: item.path,
         size_bytes: item.bytes, size_complete: true, last_modified: new Date(item.modified_ms).toISOString(), rebuild: rule.rebuild,
-        metadata: {label: item.label, ...stored ? {'Onde está': stored} : {}},
+        metadata: {label: item.label, ...stored ? {'Onde está': stored} : {}, ...item.local === false ? {on_device: 'no'} : {}, ...rule.files!.duplicate && extras.get(item.path) ? {'Fica': extras.get(item.path)!.label} : {}},
       });
     }
   }
@@ -272,4 +283,11 @@ export function scan(host: Host, rules: Rule[], options: Partial<ScanOptions> = 
     warnings,
     storage: readStorage(host, home),
   };
+}
+
+// Marks findings at `paths` as only in iCloud, for hosts that check it more
+// precisely after the scan (the iPhone reads the start of each original).
+export function markOnlyInCloud<R extends {findings: Finding[]}>(report: R, paths: string[]): R {
+  const cloud = new Set(paths);
+  return {...report, findings: report.findings.map(f => cloud.has(f.path) && f.path.startsWith(PHOTO_PREFIX) ? {...f, metadata: {...f.metadata, ...inCloudOnly(ONLY_IN_ICLOUD)}} : f)};
 }

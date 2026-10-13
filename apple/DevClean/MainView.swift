@@ -51,6 +51,11 @@ struct MainView: View {
       .environment(\.metrics, metrics)
     }
     .coordinateSpace(.named("root"))
+#if os(iOS)
+    .fullScreenCover(isPresented: Binding(get: {model.reviewing != nil}, set: {if !$0 {model.reviewing = nil}})) {
+      if let set = model.reviewSet {PhotoReviewView(model: model, set: set)}
+    }
+#endif
     .background(Theme.background.ignoresSafeArea())
     .foregroundStyle(Theme.text)
     .font(Theme.sans(13))
@@ -279,6 +284,9 @@ struct Columns: View {
       VStack(spacing: gap) {
         MascotCard(model: model)
         StatsCard(model: model)
+#if os(iOS)
+        PhotoReviewCard(model: model)
+#endif
         if hasDisk {DiskCard(model: model)}
         BreakdownCard(model: model)
       }
