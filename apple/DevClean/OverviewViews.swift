@@ -1,4 +1,5 @@
 // Summary cards and the per-tool breakdown (click a tool to filter).
+#if os(iOS)
 import DevCleanKit
 import SwiftUI
 
@@ -95,3 +96,4 @@ private struct Breakdown: View {
     }
   }
 }
+#endif

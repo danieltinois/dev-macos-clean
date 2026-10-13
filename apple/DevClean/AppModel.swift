@@ -1,5 +1,6 @@
-// App state shared by both platforms. On macOS it scans and cleans; on iOS it
-// shows reports exported from a Mac (DevClean or `devclean scan --json`).
+// iPhone app state: shows reports exported from a Mac (DevClean or
+// `devclean scan --json`). The Mac app runs the shared web UI instead.
+#if os(iOS)
 import DevCleanKit
 import Foundation
 import Observation
@@ -51,14 +52,9 @@ final class AppModel {
     selected.removeAll()
     filters.category = ""
   }
-
-#if os(macOS)
-  var manifest: Cleanup.Manifest = [:]
-  // A copy of the last report, ready to send to the iPhone with AirDrop.
-  var shareURL: URL?
-#endif
 }
 
 extension Array {
   subscript(safe index: Int) -> Element? {indices.contains(index) ? self[index] : nil}
 }
+#endif

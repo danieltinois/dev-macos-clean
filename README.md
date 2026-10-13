@@ -346,15 +346,16 @@ Sem interface: `bun run scan` (ou `bun run scan --category xcode`).
 
 ## Apps nativos em Swift (macOS e iPhone)
 
-`apple/` tem uma versão nativa em SwiftUI, um único projeto para Mac e iPhone.
+`apple/` tem uma versão nativa em Swift, um único projeto para Mac e iPhone.
 Ela roda o **mesmo motor TypeScript** do `core/` dentro do JavaScriptCore, com as
-regras de `rules/` embutidas: o Swift cuida da interface, do acesso ao disco e
-de mover para a Lixeira, e o TypeScript decide o que é cada item e o que pode
-ser limpo.
+regras de `rules/` embutidas: o Swift cuida do acesso ao disco e de mover para a
+Lixeira, e o TypeScript decide o que é cada item e o que pode ser limpo.
 
-- **Mac** — analisa o disco e limpa pela Lixeira, como o app Electron: confirmação
-  que começa em **Cancelar**, revalidação de cada caminho antes de mover e nenhuma
-  exclusão definitiva. O botão **Enviar ao iPhone** compartilha o relatório por AirDrop.
+- **Mac** — mostra **a mesma interface do app Electron** (Floco, tutorial,
+  animações) numa WebView nativa, sem o Electron. Analisa o disco e limpa pela
+  Lixeira com as mesmas regras: confirmação que começa em **Cancelar**,
+  revalidação de cada caminho antes de mover e nenhuma exclusão definitiva.
+  Use **Exportar .json** e envie o arquivo por AirDrop para ver no iPhone.
 - **iPhone** — o iOS isola cada app e não dá acesso ao disco do Mac, então o app do
   iPhone só **lê relatórios**: abra o `.json` enviado pelo Mac (ou gerado com
   `devclean scan --json`) em **Abrir relatório** para ver o resumo, os gráficos e os
@@ -365,8 +366,8 @@ open apple/DevClean.xcodeproj          # escolha "My Mac" ou um iPhone e rode
 bun run test:apple                     # gera o motor e roda os testes Swift
 ```
 
-O build no Xcode precisa do Bun instalado: uma fase de build gera
-`devclean-engine.js` a partir do `core/` e coloca no app. Para rodar num iPhone
+O build no Xcode precisa do Bun instalado: uma fase de build gera a interface
+(`desktop/`) e o `devclean-engine.js` (`core/`) e coloca os dois no app. Para rodar num iPhone
 de verdade, selecione seu time em *Signing & Capabilities*.
 O app de Mac não usa App Sandbox (precisa ler o disco inteiro) e, como o Electron,
 precisa de **Acesso Total ao Disco** para medir algumas pastas.

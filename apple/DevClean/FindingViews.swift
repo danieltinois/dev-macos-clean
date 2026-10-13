@@ -1,4 +1,5 @@
 // Result rows, filters and the details view.
+#if os(iOS)
 import DevCleanKit
 import SwiftUI
 
@@ -70,19 +71,8 @@ private struct FindingRow: View {
   var body: some View {
     let f = item.finding
     HStack(spacing: 12) {
-#if os(macOS)
-      Toggle("Selecionar \(f.path)", isOn: Binding(
-        get: {model.selected.contains(item.index)},
-        set: {if $0 {model.selected.insert(item.index)} else {model.selected.remove(item.index)}}))
-        .toggleStyle(.checkbox).labelsHidden()
-        .disabled(model.busy || !f.canClean)
-        .help(f.cleanupReason.flatMap {$0.isEmpty ? nil : $0} ?? "Enviar à Lixeira")
-#endif
       Button {model.detail = item} label: {
         HStack(spacing: 12) {
-#if os(macOS)
-          Text(Labels.category(f.category)).font(.caption.monospaced()).foregroundStyle(.secondary).frame(width: 80, alignment: .leading)
-#endif
           VStack(alignment: .leading, spacing: 2) {
             Text(f.name).fontWeight(.medium)
             Text([Labels.ago(Labels.ageDays(f)), f.path].filter {!$0.isEmpty}.joined(separator: " · "))
@@ -147,25 +137,15 @@ struct FindingDetail: View {
     }
     .formStyle(.grouped)
     .navigationTitle(f.name)
-#if os(macOS)
-    .frame(minWidth: 560, minHeight: 520)
-    .toolbar {
-      ToolbarItem(placement: .cancellationAction) {Button("Fechar") {dismiss()}}
-      ToolbarItem(placement: .primaryAction) {Button("Mostrar no Finder") {model.reveal(f)}}
-    }
-#endif
   }
 
   private func cleanupText(_ f: Finding) -> String {
     guard let allowed = f.cleanupAllowed else {return "Analise novamente no DevClean do Mac para limpar."}
     if !allowed {return f.cleanupReason ?? ""}
-#if os(iOS)
     let place = "pelo DevClean no Mac"
-#else
-    let place = "se você selecionar"
-#endif
     if f.autoClean == true {return "Incluído na limpeza automática."}
     if f.cleanupReview == true {return "Pode ir para a Lixeira \(place). Confira antes: pode conter dados que não voltam sozinhos."}
     return "Pode ir para a Lixeira \(place)."
   }
 }
+#endif

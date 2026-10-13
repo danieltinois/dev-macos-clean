@@ -23,7 +23,7 @@ Before finishing a change, run `bun test` and `bun run typecheck`. If you touch
 `desktop/` or `scripts/build.ts`, also run `bun run build`.
 
 The Swift apps under `apple/` need Xcode and Bun (an Xcode build phase runs
-`apple/bundle-engine.sh`). Prefix commands with
+`apple/bundle-resources.sh`, which builds the UI and the engine). Prefix commands with
 `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` if `xcode-select`
 points at the Command Line Tools:
 
@@ -58,16 +58,19 @@ both builds: the Swift apps run the same engine.
   `preload.ts` (the `window.devclean` bridge), `renderer.ts` (sandboxed UI).
 - `scripts/build.ts`: bundles to `dist/` (main, preload and worker as CJS; the
   renderer as a browser script). `dist/` is generated, so don't edit or commit it.
-- `apple/`: native Swift apps that run the TypeScript engine in
-  JavaScriptCore; Swift holds no scanning rules or policy. `DevCleanKit/` has
-  `Engine.swift` (the bridge), `NativeHost.swift` (the Host: POSIX calls plus a
-  native `measure`, the hot loop), `Cleanup.swift` (the trusted side: identities,
-  tokens, Trash), `Report.swift` (the JSON contract as Codable) and
-  `Presentation.swift` (pt-BR labels, filters). `DevClean.xcodeproj` builds one
-  SwiftUI target for macOS (scans and cleans, not sandboxed) and iPhone (opens
-  reports exported from a Mac, since iOS can't see the Mac's disk). The project
-  uses a synchronized folder, so new files in `apple/DevClean/` need no project
-  edits.
+- `apple/`: the native Swift app. It runs the TypeScript engine in
+  JavaScriptCore and, on macOS, the **same UI as Electron** (`desktop/index.html`,
+  `renderer.ts`, `style.css`) in a WKWebView, so Swift holds no rules, policy
+  or Mac UI of its own. `DevClean/DesktopWindow.swift` is the macOS shell (the
+  counterpart of `main.ts` + `preload.ts`: `window.devclean` over script
+  messages). `DevCleanKit/` has `Engine.swift` (the JavaScriptCore bridge),
+  `NativeHost.swift` (the Host: POSIX calls plus a native `measure`, the hot
+  loop), `Cleanup.swift` (the trusted side: identities, tokens, Trash),
+  `Bridge.swift` (validates page requests, builds replies and the
+  confirmation), `Report.swift` and `Presentation.swift`. The iPhone still uses
+  SwiftUI screens (`ContentView` and friends) that open reports exported from
+  a Mac. The project uses a synchronized folder, so new files in
+  `apple/DevClean/` need no project edits.
 
 ## Safety invariants (do not weaken)
 
@@ -88,9 +91,13 @@ This tool deletes things on users' machines. Treat these as hard rules:
    path are rejected. Keep `prepare` → `select` → `validate` → `moveToTrash`.
 4. IPC handlers in `main.ts` must call `trusted(event)`, accept only indices into
    the last report plus its `cleanup_token`, and never accept raw paths from the
-   renderer.
+   renderer. The Swift shell does the same: `DesktopWindow.swift` only answers
+   our page's main frame, and `BridgeRequest` accepts nothing but indices,
+   the token and `automatic === true`.
 5. The renderer stays sandboxed: `contextIsolation`, no `nodeIntegration`, a
-   strict CSP, and no remote content.
+   strict CSP, and no remote content. In the Swift shell the page is served
+   from the `devclean://` scheme (only the three UI files), can't navigate
+   elsewhere and can't open windows.
 6. Only the user's own clicks start cleanup. The confirmation dialog defaults to
    **Cancelar**, and REVIEW items are never `auto_clean`.
 

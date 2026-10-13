@@ -1,103 +1,13 @@
-// Top-level layout: a split view with actions on the Mac, a single list on the iPhone.
+// iPhone layout: summary, per-tool breakdown and results in one list.
+#if os(iOS)
 import DevCleanKit
 import SwiftUI
 import UniformTypeIdentifiers
 
 struct ContentView: View {
-  @Environment(AppModel.self) private var model
-
-  var body: some View {
-#if os(macOS)
-    MacLayout()
-#else
-    PhoneLayout()
-#endif
-  }
+  var body: some View {PhoneLayout()}
 }
 
-#if os(macOS)
-private struct MacLayout: View {
-  @Environment(AppModel.self) private var model
-
-  var body: some View {
-    NavigationSplitView {
-      ScrollView {OverviewPanel().padding()}
-        .navigationSplitViewColumnWidth(min: 280, ideal: 320)
-    } detail: {
-      VStack(spacing: 0) {
-        FilterBar().padding([.horizontal, .top])
-        CleanupBar().padding()
-        Divider()
-        ResultsList()
-        StatusLine()
-      }
-    }
-    .navigationTitle("DevClean")
-    .navigationSubtitle(model.report.map {"\($0.totals.findings) artefatos · \(Labels.bytes($0.totals.bytes))"} ?? "Caches, dependências, logs e arquivos para revisão")
-    .toolbar {
-      ToolbarItemGroup {
-        Button(model.report == nil ? "Analisar" : "Analisar novamente", systemImage: "arrow.clockwise") {Task {await model.scan()}}
-          .disabled(model.busy)
-        if let url = model.shareURL {
-          ShareLink(item: url) {Label("Enviar ao iPhone", systemImage: "iphone.and.arrow.forward")}
-            .help("Envie o relatório por AirDrop e abra no DevClean do iPhone")
-        }
-        Button("Exportar .json", systemImage: "square.and.arrow.down") {model.export()}
-          .disabled(model.report == nil || model.busy)
-      }
-    }
-    .sheet(item: Bindable(model).detail) {FindingDetail(item: $0)}
-    .task {if model.report == nil {await model.scan()}}
-  }
-}
-
-private struct CleanupBar: View {
-  @Environment(AppModel.self) private var model
-
-  var body: some View {
-    let items = model.shown
-    let stale = items.filter {$0.finding.canClean && $0.finding.isStale}
-    let auto = model.report?.findings.filter {$0.autoClean == true} ?? []
-    HStack {
-      Button(model.filters.isActive ? "Selecionar filtrados" : "Selecionar tudo") {model.select {_ in true}}
-        .disabled(model.busy || !items.contains {$0.finding.canClean})
-      Button("Projetos parados (90+ dias)\(stale.isEmpty ? "" : " · \(Labels.bytes(stale.reduce(0) {$0 + $1.finding.sizeBytes}))")") {model.select(where: \.isStale)}
-        .disabled(model.busy || stale.isEmpty)
-        .help("node_modules e target/ de projetos sem modificação há mais de 90 dias")
-      Button("Limpar seleção") {model.selected.removeAll()}.disabled(model.busy || model.selected.isEmpty)
-      Text(model.selected.isEmpty ? "Selecione itens para limpar" : "\(model.selected.count) selecionado(s) · \(Labels.bytes(model.selectedBytes))\(model.selectedReview > 0 ? " · \(model.selectedReview) para revisar" : "")")
-        .foregroundStyle(.secondary).font(.callout)
-      Spacer()
-      Button("Limpeza automática\(auto.isEmpty ? "" : " · \(Labels.bytes(auto.reduce(0) {$0 + $1.sizeBytes}))")") {model.clean(automatic: true)}
-        .disabled(model.busy || auto.isEmpty)
-        .help("Envia à Lixeira caches que se recriam sozinhos e dependências de projetos parados há 90+ dias")
-      Button("Enviar à Lixeira") {model.clean(automatic: false)}
-        .buttonStyle(.borderedProminent)
-        .disabled(model.busy || model.selected.isEmpty)
-    }
-    .controlSize(.regular)
-  }
-}
-
-private struct StatusLine: View {
-  @Environment(AppModel.self) private var model
-
-  var body: some View {
-    HStack {
-      if model.busy {ProgressView().controlSize(.small)}
-      Text(model.status).foregroundStyle(model.statusIsError ? .red : .secondary)
-      Spacer()
-      Text(model.report?.scannedDate.map {"Última análise: \($0.formatted(date: .abbreviated, time: .shortened))"} ?? "Limpeza via Lixeira · restauração pelo Finder.")
-        .foregroundStyle(.secondary)
-    }
-    .font(.callout)
-    .padding(.horizontal).padding(.vertical, 8)
-    .background(.bar)
-  }
-}
-#endif
-
-#if os(iOS)
 private struct PhoneLayout: View {
   @Environment(AppModel.self) private var model
   @State private var importing = false
@@ -110,7 +20,7 @@ private struct PhoneLayout: View {
           ContentUnavailableView {
             Label("Nenhum relatório", systemImage: "externaldrive.badge.questionmark")
           } description: {
-            Text("O iPhone não enxerga o disco do Mac. Analise no DevClean do Mac, toque em “Enviar ao iPhone” e abra o arquivo aqui. Relatórios do `devclean scan --json` também funcionam.")
+            Text("O iPhone não enxerga o disco do Mac. Analise no DevClean do Mac, use “Exportar .json”, envie o arquivo por AirDrop e abra aqui. Relatórios do `devclean scan --json` também funcionam.")
           } actions: {
             Button("Abrir relatório") {importing = true}.buttonStyle(.borderedProminent)
           }

@@ -12,7 +12,7 @@
 
 /* Begin PBXFileReference section */
 		D0C1EA000000000000000201 /* DevClean.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DevClean.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		D0C1EA000000000000000204 /* bundle-engine.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "bundle-engine.sh"; sourceTree = "<group>"; };
+		D0C1EA000000000000000204 /* bundle-resources.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "bundle-resources.sh"; sourceTree = "<group>"; };
 		D0C1EA000000000000000203 /* DevCleanKit */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = DevCleanKit; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -37,7 +37,7 @@
 			children = (
 				D0C1EA000000000000000301 /* DevClean */,
 				D0C1EA000000000000000203 /* DevCleanKit */,
-				D0C1EA000000000000000204 /* bundle-engine.sh */,
+				D0C1EA000000000000000204 /* bundle-resources.sh */,
 				D0C1EA000000000000000502 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -57,7 +57,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = D0C1EA000000000000000802 /* Build configuration list for PBXNativeTarget "DevClean" */;
 			buildPhases = (
-				D0C1EA000000000000000703 /* Bundle TypeScript engine */,
+				D0C1EA000000000000000703 /* Bundle engine and UI */,
 				D0C1EA000000000000000701 /* Sources */,
 				D0C1EA000000000000000401 /* Frameworks */,
 				D0C1EA000000000000000702 /* Resources */,
@@ -120,7 +120,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		D0C1EA000000000000000703 /* Bundle TypeScript engine */ = {
+		D0C1EA000000000000000703 /* Bundle engine and UI */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
@@ -130,15 +130,18 @@
 			);
 			inputPaths = (
 			);
-			name = "Bundle TypeScript engine";
+			name = "Bundle engine and UI";
 			outputFileListPaths = (
 			);
 			outputPaths = (
 				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/devclean-engine.js",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/ui/index.html",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/ui/renderer.js",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/ui/style.css",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "\"$SRCROOT/bundle-engine.sh\"\n";
+			shellScript = "\"$SRCROOT/bundle-resources.sh\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
