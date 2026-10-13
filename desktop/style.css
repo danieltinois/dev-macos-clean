@@ -99,13 +99,27 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 /* Layout: overview sidebar (summary + per-tool chart) next to the results. */
 .layout { display: grid; grid-template-columns: 400px minmax(0, 1fr); gap: 24px; align-items: start; margin-top: 22px; }
 .overview { display: grid; gap: 16px; }
-.stats, .breakdown { border: 1px solid var(--line); border-radius: 4px; background: #1c1e22; }
+.stats, .breakdown, .disk { border: 1px solid var(--line); border-radius: 4px; background: #1c1e22; }
 .stats article { padding: 14px 16px; border-top: 1px solid var(--line); }
 .stats article:first-child { border-top: 0; }
 .stats .label { letter-spacing: .6px; }
 .stats strong { display: block; font: 24px var(--mono); letter-spacing: -1px; color: #e0e3e7; margin: 8px 0 6px; font-variant-numeric: tabular-nums; }
 .stats article:first-child strong { font-size: 30px; }
 .breakdown { padding: 14px 16px 10px; }
+.disk { padding: 14px 16px 12px; }
+.disk .meter { margin-bottom: 10px; font-size: 11px; overflow: hidden; }
+.disk-row { display: grid; grid-template-columns: 12px 1fr auto; column-gap: 8px; align-items: baseline; padding: 4px 0; }
+.disk-row small { grid-column: 2 / -1; color: var(--muted); font-size: 10.5px; line-height: 1.4; }
+.disk-key { font-size: 10px; }
+.disk-label { color: #c8cbd1; font-size: 12px; }
+.disk-row strong { font: 12px var(--mono); color: #e0e3e7; font-variant-numeric: tabular-nums; }
+.bar-used { color: #6b7480; }
+.folders { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.folder-list { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 0; }
+.folder-list small { color: var(--muted); font-size: 11px; }
+.chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 2px 2px 2px 8px; border: 1px solid var(--line); border-radius: 12px; background: #24272b; color: #c8cbd1; font: 11px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip button { padding: 2px 7px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); }
+.chip button:hover { color: #e0e3e7; background: #303338; }
 .breakdown-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 10px; }
 .hint { font: 10px var(--mono); color: #6f7782; }
 .muted { color: var(--muted); font-size: 11px; }
@@ -190,4 +204,55 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
   #tour-guide { transition: left .45s cubic-bezier(.2,.7,.3,1), top .45s cubic-bezier(.2,.7,.3,1); }
   #tour:not([hidden]) #tour-guide { animation: guide-in .35s cubic-bezier(.2,.9,.3,1.2); }
   @keyframes guide-in { from { opacity: 0; transform: translateY(10px) scale(.96); } }
+}
+
+/* iPhone and other narrow screens: one column, rows as compact cards, touch-sized controls.
+   The iPhone has no traffic lights to make room for in the title bar. */
+html { -webkit-text-size-adjust: 100%; }
+button, .row { -webkit-tap-highlight-color: transparent; }
+[data-platform="ios"] .titlebar { padding-left: 16px; padding-right: 16px; height: 40px; }
+@media (max-width: 600px) {
+  main { padding: 16px 12px 0; }
+  .heading { flex-direction: column; align-items: stretch; gap: 14px; margin-bottom: 16px; }
+  .logo { font-size: 7px; }
+  .actions { flex-wrap: wrap; }
+  .actions button { flex: 1 1 auto; min-height: 40px; }
+  .scope { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .scope-path { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .folders { flex-direction: column; align-items: stretch; }
+  #add-folder { min-height: 40px; }
+  .chip button { min-width: 32px; min-height: 28px; }
+  .layout { margin-top: 16px; gap: 16px; }
+  .overview { gap: 12px; }
+  .mascot .cat pre { font-size: 6.4px; }
+  .stats strong, .stats article:first-child strong { font-size: 24px; }
+  .bar-row { grid-template-columns: 74px minmax(0, 1fr) auto; }
+  .bar-chart { overflow: hidden; }
+  .filters { flex-wrap: wrap; }
+  .filters input { flex-basis: 100%; }
+  .filters select { flex: 1 1 0; min-width: 0; }
+  .filters input, .filters select { font-size: 14px; padding: 9px; }
+  .cleanup-bar { flex-direction: column; align-items: stretch; gap: 10px; }
+  .quick button { min-height: 36px; }
+  .cleanup-bar .primary { min-height: 44px; font-size: 13px; }
+  .table-head { display: none; }
+  .row { grid-template-columns: 22px minmax(0, 1fr); gap: 10px; padding: 12px; }
+  .row input { width: 20px; height: 20px; }
+  .item-details { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "info size" "info badge"; gap: 4px 10px; }
+  .item-details .tool, .item-details .chevron { display: none; }
+  .item-details .row-info { grid-area: info; }
+  .item-details .size { grid-area: size; }
+  .item-details .badge { grid-area: badge; text-align: right; }
+  footer { flex-direction: column; gap: 6px; padding-bottom: 24px; }
+  dialog { width: auto; max-width: calc(100vw - 20px); max-height: 88vh; padding: 16px; }
+  .dialog-head button { min-height: 36px; padding: 6px 12px; }
+  kbd { display: none; }
+  #reveal { width: 100%; min-height: 44px; }
+  /* No room beside the bubble: Floco sits on top of it, smaller, and the bubble points up at him. */
+  #tour-guide { width: calc(100vw - 24px); flex-direction: column; align-items: flex-start; gap: 2px; }
+  #tour-guide .cat { margin-left: 14px; }
+  #tour-guide .cat pre { font-size: 3.4px; }
+  .tour-bubble { width: 100%; }
+  .tour-bubble::before { left: 46px; top: -7px; margin-top: 0; border-bottom: 0; border-top: 1px solid #4a5058; }
+  .tour-controls button { min-height: 36px; }
 }

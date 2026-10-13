@@ -1,0 +1,10 @@
+{
+  "id": "old-screenshots",
+  "name": "Capturas de tela antigas",
+  "category": "screenshots",
+  "severity": "REVIEW",
+  "reclaimable": false,
+  "description": "Capturas de tela com mais de 30 dias. Costumam ser lembretes rápidos que ninguém abre de novo.",
+  "photos": {"subtype": "screenshot", "min_age_days": 30},
+  "rebuild": {"description": "Não se recria. Fica 30 dias em Fotos › Apagados antes de sumir de vez."}
+}

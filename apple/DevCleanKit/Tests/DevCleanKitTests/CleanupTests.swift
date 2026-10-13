@@ -169,8 +169,8 @@ private struct Fixture {
     let report = prepared.report
     var manifest = prepared.manifest
     #expect(report.findings.map(\.cleanupAllowed) == [true, true, true, true, false, false, false, false])
-    #expect(report.findings.filter {$0.canClean}.allSatisfy {$0.cleanupReview == true && $0.autoClean == false})
-    #expect(report.findings.filter {!$0.canClean}.allSatisfy {($0.cleanupReason ?? "").count > 10})
+    #expect(report.findings.filter {$0.cleanupAllowed == true}.allSatisfy {$0.cleanupReview == true && $0.autoClean == false})
+    #expect(report.findings.filter {$0.cleanupAllowed != true}.allSatisfy {($0.cleanupReason ?? "").count > 10})
     let items = try Cleanup.select(report, indices: [0, 2], token: report.cleanupToken, engine: fx.engine)
     var called: [String] = []
     _ = try Cleanup.moveToTrash(items, manifest: &manifest, engine: fx.engine) {called.append($0)}

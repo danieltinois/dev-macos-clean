@@ -35,7 +35,8 @@ function fixture() {
   });
   return home;
 }
-const withoutTime = (report: Report) => ({...report, scanned_at: ''});
+// Free space moves between two scans; only its presence is compared.
+const withoutTime = (report: Report) => ({...report, scanned_at: '', storage: report.storage && {...report.storage, free_bytes: 0}});
 
 test('the bundle needs no Node globals and embeds every rule', () => {
   assert.equal(bridge.ruleCount(), loadRules().length);

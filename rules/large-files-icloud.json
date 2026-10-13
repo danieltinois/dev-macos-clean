@@ -1,0 +1,10 @@
+{
+  "id": "large-files-icloud",
+  "name": "Arquivos grandes só no iCloud Drive",
+  "category": "icloud",
+  "severity": "REVIEW",
+  "reclaimable": false,
+  "description": "Arquivos de 100 MB ou mais que estão só no iCloud Drive, sem cópia no iPhone. Apagar libera espaço no iCloud, não no iPhone.",
+  "files": {"min_bytes": 104857600, "stored": "cloud"},
+  "rebuild": {"description": "Não se recria. Fica em Apagados no app Arquivos até sumir de vez."}
+}

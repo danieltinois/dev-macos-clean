@@ -23,7 +23,10 @@ public struct ScanOptions: Encodable, Sendable {
   public var home: String?
   public var globalScan: Bool?
   public var usersDir: String?
-  public init(home: String? = nil, globalScan: Bool? = nil) {self.home = home; self.globalScan = globalScan}
+  // "disk", "photos" and/or "files"; the engine skips photos and files when the host has none.
+  public var sources: [String]?
+  public var now: Double?
+  public init(home: String? = nil, globalScan: Bool? = nil, sources: [String]? = nil) {self.home = home; self.globalScan = globalScan; self.sources = sources}
 }
 
 // The engine's cleanup decision for one finding (core/policy.ts).

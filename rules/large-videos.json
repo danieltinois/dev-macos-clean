@@ -1,0 +1,10 @@
+{
+  "id": "large-videos",
+  "name": "Vídeos grandes no iPhone",
+  "category": "videos",
+  "severity": "REVIEW",
+  "reclaimable": false,
+  "description": "Vídeos de 100 MB ou mais guardados no iPhone. Se já estão no iCloud e você quer manter, não precisa apagar: com Ajustes › Fotos › Otimizar Armazenamento do iPhone, o iOS deixa o original só no iCloud quando o espaço aperta.",
+  "photos": {"media": "video", "min_bytes": 104857600, "stored": "device"},
+  "rebuild": {"description": "Não se recria. Fica 30 dias em Fotos › Apagados antes de sumir de vez, também do iCloud."}
+}

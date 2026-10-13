@@ -45,7 +45,11 @@ import Testing
     symlink(home, Paths.join(home, "projects/loop"))
     var native = try makeEngine(nativeMeasure: true).scan(ScanOptions(home: home))
     var walked = try makeEngine(nativeMeasure: false).scan(ScanOptions(home: home))
+    // Free space moves between scans; the native host also knows purgeable space.
+    let storage = try #require(native.storage)
+    #expect(storage.totalBytes > 0 && storage.freeBytes > 0 && storage.purgeableBytes != nil)
     native.scannedAt = ""; walked.scannedAt = ""
+    native.storage = nil; walked.storage = nil
     #expect(native == walked)
   }
 
@@ -83,6 +87,26 @@ import Testing
     #expect(report.warnings.contains {$0.hasPrefix("cannot read \(Paths.join(home, "projects/b")): ")})
   }
 
+  @Test func photoLibraryItemsGoThroughTheEngine() throws {
+    let now = Date().timeIntervalSince1970 * 1000, day = 86_400_000.0
+    let library: @Sendable () throws -> [[String: Any]] = {[
+      ["id": "V/L0/001", "name": "IMG_0100.MOV", "media": "video", "subtypes": [String](), "burst": "none", "bytes": 300.0 * 1024 * 1024, "created_ms": now - day, "local": false, "cloud": true, "width": 1920, "height": 1080, "duration_ms": 60_000.0],
+      ["id": "S/L0/001", "name": "IMG_0200.PNG", "media": "image", "subtypes": ["screenshot"], "burst": "none", "bytes": NSNull(), "created_ms": now - 40 * day, "local": true, "cloud": NSNull(), "width": 1179, "height": 2556, "duration_ms": 0.0],
+      ["id": "P/L0/001", "name": "IMG_0300.HEIC", "media": "image", "subtypes": [String](), "burst": "none", "bytes": 1000.0, "created_ms": now, "local": true, "cloud": false, "width": 4032, "height": 3024, "duration_ms": 0.0],
+    ]}
+    let engine = try Engine(script: String(contentsOf: engineURL, encoding: .utf8), host: NativeHost(home: "/nonexistent", photos: library))
+    let report = try engine.scan(ScanOptions(home: "/nonexistent", sources: ["photos"]))
+    #expect(report.findings.map(\.ruleId).sorted() == ["large-videos-icloud", "old-screenshots"])
+    #expect(report.findings.first {$0.ruleId == "large-videos-icloud"}?.path == "photos://V/L0/001")
+    #expect(report.findings.first {$0.ruleId == "old-screenshots"}?.metadata["label"] == "IMG_0200.PNG")
+    #expect(report.warnings == [] && report.roots == [])
+    let decisions = try engine.decide(report, home: "/nonexistent", appRoot: "/app", now: Date())
+    #expect(decisions.allSatisfy {$0.allowed && $0.review && !$0.auto})
+
+    let denied = try Engine(script: String(contentsOf: engineURL, encoding: .utf8), host: NativeHost(home: "/nonexistent", photos: {throw EngineError(message: "Sem acesso às Fotos.")}))
+    #expect(try denied.scan(ScanOptions(home: "/nonexistent", sources: ["photos"])).warnings == ["cannot read photos: Sem acesso às Fotos."])
+  }
+
   @Test func engineErrorsSurfaceAsSwiftErrors() throws {
     #expect(throws: EngineError(message: "Seleção inválida.")) {try makeEngine().select([], indices: [])}
     #expect(throws: EngineError.self) {try Engine(script: "throw new Error('boom')")}
@@ -104,24 +128,7 @@ import Testing
     #expect(try Report.decode(report.encoded()) == report)
     let json = #"{"schema_version":1,"scanned_at":"2026-10-13T12:00:00.000Z","roots":["/Users/me"],"options":{"global_scan":false,"max_depth":6,"max_findings":500,"excludes":[],"categories":[]},"totals":{"findings":1,"bytes":10,"by_severity":{"SAFE":10,"REVIEW":0,"DANGER":0},"by_category":{"node":10}},"findings":[{"rule_id":"npm-cache","name":"npm","category":"node","severity":"SAFE","reclaimable":true,"description":"d","path":"/Users/me/.npm/_cacache","size_bytes":10,"size_complete":true,"last_modified":null,"rebuild":null,"metadata":{}}],"warnings":[]}"#
     let cli = try Report.decode(Data(json.utf8))
-    #expect(cli.findings.first?.isSafe == true && cli.findings.first?.canClean == false)
+    #expect(cli.findings.first?.cleanupAllowed == nil)
     #expect(throws: ReportError.self) {try Report.decode(Data(json.replacingOccurrences(of: "\"schema_version\":1", with: "\"schema_version\":2").utf8))}
-  }
-}
-
-@Suite struct PresentationTests {
-  @Test func formatsBytesInPortuguese() {
-    #expect(Labels.bytes(0) == "0 B")
-    #expect(Labels.bytes(1024) == "1 KB")
-    #expect(Labels.bytes(Int(2.4 * 1024 * 1024 * 1024)) == "2,4 GB")
-  }
-
-  @Test func pickSkipsNestedPaths() {
-    func item(_ index: Int, _ path: String, _ allowed: Bool = true) -> Indexed {
-      var f = Finding(ruleId: "x", category: "node", severity: .safe, path: path)
-      f.cleanupAllowed = allowed
-      return Indexed(index: index, finding: f)
-    }
-    #expect(Selection.pick([item(0, "/a/b"), item(1, "/a"), item(2, "/c", false), item(3, "/ab")], {_ in true}) == [1, 3])
   }
 }

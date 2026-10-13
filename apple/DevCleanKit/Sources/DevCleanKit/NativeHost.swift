@@ -15,9 +15,14 @@ public struct NativeHost: Sendable {
   public var cwd: String
   // false makes the engine measure through readdir/lstat, to check parity in tests.
   public var nativeMeasure: Bool
+  // The photo library (core/host.ts photos()), on the iPhone: PhotoLibrary.assets.
+  public var photos: (@Sendable () throws -> [[String: Any]])?
+  // Files in the folders picked in the Files app (core/host.ts files()), on the iPhone: PickedFolders.items.
+  public var files: (@Sendable () throws -> [[String: Any]])?
 
-  public init(home: String = NSHomeDirectory(), cwd: String = FileManager.default.currentDirectoryPath, nativeMeasure: Bool = true) {
-    self.home = home; self.cwd = cwd; self.nativeMeasure = nativeMeasure
+  public init(home: String = NSHomeDirectory(), cwd: String = FileManager.default.currentDirectoryPath, nativeMeasure: Bool = true,
+              photos: (@Sendable () throws -> [[String: Any]])? = nil, files: (@Sendable () throws -> [[String: Any]])? = nil) {
+    self.home = home; self.cwd = cwd; self.nativeMeasure = nativeMeasure; self.photos = photos; self.files = files
   }
 
   struct Entry {let name: String; let kind: String}
@@ -57,7 +62,27 @@ public struct NativeHost: Sendable {
       }
       set("measure", unsafeBitCast(measure, to: AnyObject.self))
     }
+    for (name, source) in [("photos", photos), ("files", files)] {
+      guard let source else {continue}
+      let list: @convention(block) () -> Any = {
+        do {return try source()} catch {return fail(error.localizedDescription)}
+      }
+      set(name, unsafeBitCast(list, to: AnyObject.self))
+    }
+    let storage: @convention(block) (String) -> Any = {path in
+      do {return try Self.storage(path)} catch {return fail(error.localizedDescription)}
+    }
+    set("storage", unsafeBitCast(storage, to: AnyObject.self))
     return host
+  }
+
+  // Total and free space of the volume holding `path`. "Important usage" is what
+  // the system can make room for, so the difference is purgeable space.
+  static func storage(_ path: String) throws -> [String: Any] {
+    let values = try URL(fileURLWithPath: path).resourceValues(forKeys: [.volumeTotalCapacityKey, .volumeAvailableCapacityKey, .volumeAvailableCapacityForImportantUsageKey])
+    guard let total = values.volumeTotalCapacity, let free = values.volumeAvailableCapacity else {throw ReadError(message: "volume capacity unavailable")}
+    let purgeable: Any = values.volumeAvailableCapacityForImportantUsage.map {Double(max(0, Int($0) - free))} ?? NSNull()
+    return ["total_bytes": Double(total), "free_bytes": Double(free), "purgeable_bytes": purgeable]
   }
 
   private static func kind(_ mode: mode_t) -> String {

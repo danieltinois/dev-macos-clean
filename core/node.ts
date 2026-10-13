@@ -25,6 +25,11 @@ export const nodeHost: Host = {
   env: name => process.env[name],
   home: () => os.homedir(),
   cwd: () => process.cwd(),
+  // statfs has no notion of purgeable space; only the Swift app can ask macOS for it.
+  storage: target => {
+    const {bsize, blocks, bavail} = fs.statfsSync(target);
+    return {total_bytes: blocks * bsize, free_bytes: bavail * bsize, purgeable_bytes: null};
+  },
 };
 
 // Load every `*.json` in `directory` (default: the project's rules/) as one rule each.

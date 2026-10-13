@@ -12,6 +12,7 @@ public enum Cleanup {
   public struct Outcome: Sendable {
     public var moved: [(path: String, sizeBytes: Int)] = []
     public var errors: [(path: String, message: String)] = []
+    public init() {}
   }
   public struct Failure: LocalizedError, Equatable {
     public let message: String
@@ -19,8 +20,11 @@ public enum Cleanup {
     public var errorDescription: String? {message}
   }
 
+  // How a target is identified: files by fileIdentity, photos by PhotoLibrary.identity.
+  public typealias Identity = (String) throws -> String
+
   // Annotate every finding with the engine's decision and capture identities.
-  public static func prepare(_ report: Report, engine: Engine, home: String, appRoot: String, now: Date = Date()) throws -> (report: Report, manifest: Manifest) {
+  public static func prepare(_ report: Report, engine: Engine, home: String, appRoot: String, now: Date = Date(), identity: Identity = fileIdentity) throws -> (report: Report, manifest: Manifest) {
     let decisions = try engine.decide(report, home: home, appRoot: appRoot, now: now)
     var manifest: Manifest = [:]
     var prepared = report
@@ -48,7 +52,7 @@ public enum Cleanup {
     return try engine.select(report.findings, indices: indices)
   }
 
-  public static func validate(_ selected: [Finding], manifest: Manifest) throws {
+  public static func validate(_ selected: [Finding], manifest: Manifest, identity: Identity = fileIdentity) throws {
     for f in selected {
       guard let expected = manifest[f.path], (try? identity(f.path)) == expected else {throw Failure("O diretório mudou desde a análise: \(f.path). Analise novamente.")}
     }
@@ -79,7 +83,7 @@ public enum Cleanup {
   }
 
   // realpath, device, inode, mtime and ctime of a canonical, symlink-free path.
-  static func identity(_ target: String) throws -> String {
+  public static func fileIdentity(_ target: String) throws -> String {
     if Paths.resolve(target) != target {throw Failure("Caminho não canônico.")}
     var current = target
     while true {

@@ -46,6 +46,14 @@ const automatic = new Set([
   'npm-cache', 'pnpm-cache', 'yarn-cache', 'bun-cache', 'go-build-cache', 'gradle-cache', 'gradle-wrapper', 'pub-cache',
 ]);
 export const STALE_DAYS = 90;
+// Photo library items are reported as `photos://<id>`. Only these rules may
+// remove them, always for review, never automatically. They go to the
+// library's Recently Deleted album, confirmed by the system.
+export const PHOTO_PREFIX = 'photos://';
+// Files from folders the user picked in the Files app (iPhone): only these rules,
+// only regular files, always for review. They go to Recently Deleted in Files.
+const fileTargets = new Set(['large-files', 'large-files-icloud', 'old-downloads']);
+const photoTargets = new Set(['large-videos', 'large-videos-icloud', 'large-photos', 'duplicate-photos', 'old-screenshots', 'screen-recordings', 'burst-extras']);
 // Project outputs only qualify when the project has not been touched for STALE_DAYS.
 export function isAutomatic(finding: PolicyInput, now: number) {
   if (automatic.has(finding.rule_id)) return true;
@@ -82,9 +90,15 @@ export function overlaps(a: string, b: string) {return a === b || a.startsWith(b
 
 // Cleanup policy for one finding: {allowed, review, reason}. `appRoot` is the app's own files.
 export function policy(host: Host, finding: PolicyInput, home: string, appRoot: string): Policy {
-  const target = path.resolve(host.cwd(), finding.path);
   const deny = (reason: string): Policy => ({allowed:false, review:false, reason});
+  if (finding.path.startsWith(PHOTO_PREFIX)) {
+    return photoTargets.has(finding.rule_id) && finding.severity !== 'DANGER' ? {allowed:true, review:true} : deny('Este item não está na lista de limpeza do DevClean.');
+  }
+  const target = path.resolve(host.cwd(), finding.path);
   if (overlaps(target, appRoot)) return deny('Arquivos do próprio DevClean estão protegidos.');
+  if (fileTargets.has(finding.rule_id)) {
+    return finding.severity !== 'DANGER' && host.lstat(target)?.kind === 'file' ? {allowed:true, review:true} : deny('Só arquivos comuns das pastas que você escolheu podem ser limpos.');
+  }
   if (!finding.size_complete) return deny('O macOS não permitiu ler tudo nesta pasta. Conceda Acesso Total ao Disco ou limpe pelo Finder.');
   const blocked = blockedReasons[finding.rule_id];
   if (blocked) return deny(blocked);

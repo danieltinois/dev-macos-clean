@@ -7,17 +7,20 @@ import Testing
   // What WebKit hands over for a JavaScript object (numbers and booleans as NSNumber).
   func body(_ json: String) throws -> Any {try JSONSerialization.jsonObject(with: Data(json.utf8))}
 
-  @Test func parsesTheFourCalls() throws {
+  @Test func parsesEveryCall() throws {
     #expect(try BridgeRequest(body(#"{"method":"scan"}"#)) == .scan)
     #expect(try BridgeRequest(body(#"{"method":"export"}"#)) == .export)
     #expect(try BridgeRequest(body(#"{"method":"reveal","index":3}"#)) == .reveal(index: 3))
     #expect(try BridgeRequest(body(#"{"method":"cleanup","indices":[0,2],"token":"t","automatic":true}"#)) == .cleanup(indices: [0, 2], token: "t", automatic: true))
+    #expect(try BridgeRequest(body(#"{"method":"folders"}"#)) == .folders)
+    #expect(try BridgeRequest(body(#"{"method":"addFolder","path":"/etc"}"#)) == .addFolder)
+    #expect(try BridgeRequest(body(#"{"method":"removeFolder","index":1}"#)) == .removeFolder(index: 1))
   }
 
   @Test(arguments: [
     #"{"method":"cleanup","indices":["0"],"token":"t"}"#, #"{"method":"cleanup","indices":[0.5],"token":"t"}"#,
     #"{"method":"cleanup","indices":[true],"token":"t"}"#, #"{"method":"cleanup","indices":"0","token":"t"}"#,
-    #"{"method":"reveal","index":"1"}"#, #"{"method":"reveal"}"#, #"{"method":"rm","path":"/"}"#, #"{"path":"/"}"#, #"[]"#,
+    #"{"method":"reveal","index":"1"}"#, #"{"method":"reveal"}"#, #"{"method":"removeFolder","index":"/"}"#, #"{"method":"removeFolder"}"#, #"{"method":"rm","path":"/"}"#, #"{"path":"/"}"#, #"[]"#,
   ])
   func rejectsAnythingButIndicesAndTokens(json: String) throws {
     #expect(throws: Cleanup.Failure.self) {try BridgeRequest(body(json))}

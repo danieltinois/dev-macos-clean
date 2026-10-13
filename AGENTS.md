@@ -59,18 +59,27 @@ both builds: the Swift apps run the same engine.
 - `scripts/build.ts`: bundles to `dist/` (main, preload and worker as CJS; the
   renderer as a browser script). `dist/` is generated, so don't edit or commit it.
 - `apple/`: the native Swift app. It runs the TypeScript engine in
-  JavaScriptCore and, on macOS, the **same UI as Electron** (`desktop/index.html`,
-  `renderer.ts`, `style.css`) in a WKWebView, so Swift holds no rules, policy
-  or Mac UI of its own. `DevClean/DesktopWindow.swift` is the macOS shell (the
-  counterpart of `main.ts` + `preload.ts`: `window.devclean` over script
-  messages). `DevCleanKit/` has `Engine.swift` (the JavaScriptCore bridge),
-  `NativeHost.swift` (the Host: POSIX calls plus a native `measure`, the hot
-  loop), `Cleanup.swift` (the trusted side: identities, tokens, Trash),
-  `Bridge.swift` (validates page requests, builds replies and the
-  confirmation), `Report.swift` and `Presentation.swift`. The iPhone still uses
-  SwiftUI screens (`ContentView` and friends) that open reports exported from
-  a Mac. The project uses a synchronized folder, so new files in
-  `apple/DevClean/` need no project edits.
+  JavaScriptCore and, on macOS and iPhone, the **same UI as Electron**
+  (`desktop/index.html`, `renderer.ts`, `style.css`) in a WKWebView, so Swift
+  holds no rules, policy or UI of its own. `DevClean/WebShell.swift` is the
+  shared shell (the counterpart of `main.ts` + `preload.ts`: `window.devclean`
+  over script messages, plus `platform`). `DesktopWindow.swift` (`MacActions`:
+  disk and Trash) and `PhoneWindow.swift` (`PhoneActions`: photo library and
+  Recently Deleted) answer its calls. `desktop/platform.ts` holds the texts
+  and buttons that differ per platform. `DevCleanKit/` has `Engine.swift` (the
+  JavaScriptCore bridge), `NativeHost.swift` (the Host: POSIX calls plus a
+  native `measure`, the hot loop, `storage`, and optional `photos` and `files`),
+  `PhotoLibrary.swift` (PhotoKit: list, identity, delete), `PickedFolders.swift`
+  (folders picked in the Files app, kept as bookmarks), `Cleanup.swift` (the trusted side:
+  identities, tokens, Trash), `Bridge.swift` (validates page requests, builds
+  replies and the confirmation) and `Report.swift`. The project uses a
+  synchronized folder, so new files in `apple/DevClean/` need no project edits.
+- Photo rules (`rules/*.json` with `photos` instead of `paths`) match items the
+  host lists (`Host.photos()`, iPhone only) and report them as
+  `photos://<localIdentifier>`, with the file name in `metadata.label`. File rules
+  (`files`) do the same for files in folders picked in the Files app
+  (`Host.files()`), with real paths. `report.storage` is the volume's space
+  (`Host.storage()`), shown in the disk panel (`desktop/disk.ts`).
 
 ## Safety invariants (do not weaken)
 
@@ -79,27 +88,33 @@ This tool deletes things on users' machines. Treat these as hard rules:
 1. The scanner decides **what exists**, and `core/policy.ts` decides **what may
    be moved**. A rule never grants cleanup. Cleanup needs an explicit,
    home-relative entry in `targets`/`reviewTargets` (or `projectOutputs` with a
-   marker file) in `policy.ts`. The trusted side of each app
+   marker file) in `policy.ts`; photo and Files items need their rule in
+   `photoTargets`/`fileTargets` and are always REVIEW (Files: regular files only). The trusted side of each app
    (`desktop/cleanup.ts`, `apple/DevCleanKit/.../Cleanup.swift`) applies that
    policy and does the move. Identity checks and the move itself never run in
    the engine.
 2. Cleanup only ever uses `shell.trashItem` (`FileManager.trashItem` in Swift).
    Never add permanent deletion (`rm`, `fs.rm`, `unlink`) of user paths, and
-   never empty the Trash.
+   never empty the Trash. Photos only go through `PHAssetChangeRequest.deleteAssets`,
+   which the system confirms and which keeps them in Recently Deleted; never
+   empty that album.
 3. Before trashing, each target is revalidated against the identity captured at
    scan time (realpath, dev, inode, mtime, ctime), and symlinks anywhere in the
    path are rejected. Keep `prepare` → `select` → `validate` → `moveToTrash`.
 4. IPC handlers in `main.ts` must call `trusted(event)`, accept only indices into
    the last report plus its `cleanup_token`, and never accept raw paths from the
-   renderer. The Swift shell does the same: `DesktopWindow.swift` only answers
+   renderer. The Swift shell does the same: `WebShell.swift` only answers
    our page's main frame, and `BridgeRequest` accepts nothing but indices,
-   the token and `automatic === true`.
+   the token and `automatic === true`. Picked folders come only from the system
+   picker (`addFolder`), and the iPhone only trashes files inside them.
 5. The renderer stays sandboxed: `contextIsolation`, no `nodeIntegration`, a
    strict CSP, and no remote content. In the Swift shell the page is served
    from the `devclean://` scheme (only the three UI files), can't navigate
    elsewhere and can't open windows.
 6. Only the user's own clicks start cleanup. The confirmation dialog defaults to
-   **Cancelar**, and REVIEW items are never `auto_clean`.
+   **Cancelar** (on the iPhone too, for Files items; photos get the system's own
+   confirmation), and REVIEW items are never `auto_clean`. The iPhone has no
+   automatic cleanup at all.
 
 ## Gotchas
 

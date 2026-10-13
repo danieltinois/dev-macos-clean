@@ -1,8 +1,10 @@
 import {BANNER, SPINNER} from '../core/ascii';
 import {createMascot} from './mascot';
 import {countUp, growBar, growStack, leave, reduced, sweep, typeIn} from './motion';
-import {pick, visible, type Filters, type Indexed} from './selection';
-import {createTutorial, tourSeen, CAT_NAME} from './tutorial';
+import {diskParts, foundOnDevice} from './disk';
+import {currentPlatform} from './platform';
+import {pick, visible, where, type Filters, type Indexed} from './selection';
+import {createTutorial, stepsFor, tourSeen, CAT_NAME} from './tutorial';
 import type {CleanupFinding, CleanupReport} from './cleanup';
 import type {DevcleanBridge} from './preload';
 
@@ -13,7 +15,8 @@ const value = (id: string) => $<HTMLInputElement | HTMLSelectElement>(id).value;
 const button = (id: string) => $<HTMLButtonElement>(id);
 let report: CleanupReport | null = null, activeIndex: number | null = null, busy = false;
 const selected = new Set<number>();
-const names: Record<string, string> = {node:'Node.js', xcode:'Xcode', android:'Android', python:'Python', rust:'Rust', go:'Go', java:'Java', flutter:'Flutter', docker:'Docker', ide:'IDEs', macos:'macOS', downloads:'Downloads', logs:'Logs', homebrew:'Homebrew'};
+const names: Record<string, string> = {node:'Node.js', xcode:'Xcode', android:'Android', python:'Python', rust:'Rust', go:'Go', java:'Java', flutter:'Flutter', docker:'Docker', ide:'IDEs', macos:'macOS', downloads:'Downloads', logs:'Logs', homebrew:'Homebrew', videos:'Vídeos', screenshots:'Capturas', photos:'Fotos', duplicates:'Repetidas', icloud:'iCloud'};
+const platform = currentPlatform(window.devclean.platform);
 function ageDays(f: CleanupFinding) {const t = Date.parse(f.last_modified ?? '');return Number.isNaN(t) ? null : Math.floor((Date.now()-t)/86400000);}
 function ago(days: number | null) {if (days === null) return '';if (days < 1) return 'hoje';if (days < 31) return `há ${days} dia(s)`;if (days < 365) return `há ${Math.floor(days/30)} mês(es)`;return `há ${(days/365).toLocaleString('pt-BR',{maximumFractionDigits:1})} ano(s)`;}
 // auto_clean comes from the main process, which owns the cleanup policy.
@@ -30,7 +33,14 @@ const filtered = () => Boolean(value('search') || value('category') || value('se
 const shown = () => report ? visible(report.findings, filters()) : [];
 const cat = createMascot(button('cat'), $('cat-art'), $('cat-says'), {tips});
 // Things the cat brings up between tasks, based on the last report.
+// What the shell can't do or says differently (see platform.ts).
+$('mode').textContent = platform.mode;$('scope').textContent = platform.scope;$('scope-note').textContent = platform.scopeNote;
+$('timestamp').textContent = platform.footer;$('clean').textContent = platform.send;
+if (platform.reveal) $('reveal').textContent = platform.reveal; else $('reveal').hidden = true;
+for (const id of ['auto', 'select-stale']) $(id).hidden = !platform.automatic;
+document.documentElement.dataset.platform = platform.id;$('disk-title').textContent = platform.disk;
 const tour = createTutorial({
+  steps: stepsFor(platform),
   context: () => ({scanned: Boolean(report)}),
   onStart: () => cat.set('idle', 'Fui ali te mostrar o app!'),
   // On first launch the tour runs before anything else; the first scan starts when it ends.
@@ -41,7 +51,7 @@ const tour = createTutorial({
 });
 $('tour-open').onclick = () => tour.start();
 function tips(): string[] {
-  const list = ['Clique numa ferramenta no gráfico para filtrar.', 'Esqueceu como funciona? O botão Tutorial chama o tour.', 'Lembre de esvaziar a Lixeira para liberar espaço de verdade.', 'Psiu… pode me fazer carinho, é só clicar.'];
+  const list = ['Clique numa ferramenta no gráfico para filtrar.', 'Esqueceu como funciona? O botão Tutorial chama o tour.', platform.freeSpace, 'Psiu… pode me fazer carinho, é só clicar.'];
   if (!report) return list;
   const [top, size] = Object.entries(report.totals.by_category).sort(([, a], [, b]) => b - a)[0] ?? [];
   if (top) list.push(`${names[top] || top} ocupa ${bytes(size!)}. Vale uma olhada!`);
@@ -94,11 +104,11 @@ function render(animate = false) {
   items.forEach((f, i) => {
     const row = node('div', undefined,'row');row.dataset.index=String(f.index);row.style.setProperty('--i', String(Math.min(i, 24)));
     const check = node('input');check.type='checkbox';check.dataset.index=String(f.index);check.checked=selected.has(f.index);check.disabled=busy || !f.cleanup_allowed;
-    check.setAttribute('aria-label',`Selecionar ${f.path}`);check.title=f.cleanup_reason || 'Enviar à Lixeira';
+    check.setAttribute('aria-label',`Selecionar ${where(f)}`);check.title=f.cleanup_reason || platform.send;
     check.onchange=()=>{check.checked ? selected.add(f.index) : selected.delete(f.index);row.classList.toggle('selected', check.checked);selection();};
     row.classList.toggle('selected', check.checked);
-    const open = node('button', undefined, 'item-details');open.type='button';open.setAttribute('aria-label',`Detalhes de ${f.name}, ${f.path}`);
-    const info = node('div',undefined,'row-info');const age=ageDays(f);info.append(node('strong',f.name),node('small',age===null?f.path:`${ago(age)} · ${f.path}`));
+    const open = node('button', undefined, 'item-details');open.type='button';open.setAttribute('aria-label',`Detalhes de ${f.name}, ${where(f)}`);
+    const info = node('div',undefined,'row-info');const age=ageDays(f);info.append(node('strong',f.name),node('small',age===null?where(f):`${ago(age)} · ${where(f)}`));
     if (!f.cleanup_allowed && f.cleanup_reason) info.append(node('small',`🔒 ${f.cleanup_reason}`,'blocked'));
     open.append(node('span',names[f.category] || f.category,'tool'), info,node('span',risks[f.severity],`badge ${f.severity.toLowerCase()}`),node('span',`${f.size_complete?'':'≥ '}${bytes(f.size_bytes)}`,'size'),node('span','›','chevron'));
     open.onclick = ()=>details(f);row.append(check,open);$('list').append(row);
@@ -110,10 +120,10 @@ function update() {render();breakdown();selection();}
 function details(f: Indexed) {
   activeIndex=f.index;$('detail-title').textContent=f.name;
   const body=$('detail-body');body.replaceChildren(node('p',f.description));
-  for (const [label,text] of [['Caminho',f.path],['Tamanho e classificação',`${f.size_complete?'':'Medição parcial: pelo menos '}${bytes(f.size_bytes)} · ${risks[f.severity]} · ${f.reclaimable?'Recriável':'Pode conter dados locais'}`],['Última modificação',f.last_modified ? new Date(f.last_modified).toLocaleString('pt-BR') : 'Indisponível'],['Como recriar',f.rebuild?.description || 'Sem instruções de reconstrução.']] as const) body.append(node('h3',label),node('p',text));
+  for (const [label,text] of [[f.metadata.label ? 'Arquivo' : 'Caminho',where(f)],['Tamanho e classificação',`${f.size_complete?'':'Medição parcial: pelo menos '}${bytes(f.size_bytes)} · ${risks[f.severity]} · ${f.reclaimable?'Recriável':'Pode conter dados locais'}`],['Última modificação',f.last_modified ? new Date(f.last_modified).toLocaleString('pt-BR') : 'Indisponível'],['Como recriar',f.rebuild?.description || 'Sem instruções de reconstrução.']] as const) body.append(node('h3',label),node('p',text));
   if(f.rebuild?.commands?.length) body.append(node('pre',f.rebuild.commands.join('\n')));
-  body.append(node('h3','Limpeza'),node('p',!f.cleanup_allowed ? f.cleanup_reason : f.auto_clean ? 'Incluído na limpeza automática.' : f.cleanup_review ? 'Pode ir para a Lixeira se você selecionar. Confira antes: pode conter dados que não voltam sozinhos.' : 'Pode ir para a Lixeira se você selecionar.'));
-  for (const [key,text] of Object.entries(f.metadata)) body.append(node('h3',key),node('p',text));
+  body.append(node('h3','Limpeza'),node('p',!f.cleanup_allowed ? f.cleanup_reason : f.auto_clean ? 'Incluído na limpeza automática.' : f.cleanup_review ? `Pode ir ${platform.toTrash} se você selecionar. Confira antes: pode conter dados que não voltam sozinhos.` : `Pode ir ${platform.toTrash} se você selecionar.`));
+  for (const [key,text] of Object.entries(f.metadata)) if (key !== 'label') body.append(node('h3',key),node('p',text));
   $<HTMLDialogElement>('details').showModal();
 }
 $('close').onclick=()=>$<HTMLDialogElement>('details').close();
@@ -121,7 +131,7 @@ $('reveal').onclick=async()=>{try{await window.devclean.reveal(activeIndex!);}ca
 for(const id of ['search','category','severity','sort']) $(id).addEventListener(id==='search'?'input':'change',update);
 $('export').onclick=async()=>{try{if(await window.devclean.exportReport()) status('Relatório exportado.');}catch(e){status((e as Error).message,true);}};
 $('scan').onclick=async()=>{
-  setBusy(true);startSpinner('Analisando…','Analisando arquivos…');cat.set('scanning','Varrendo caches e node_modules…');
+  setBusy(true);startSpinner('Analisando…','Analisando arquivos…');cat.set('scanning',platform.scanning);
   try {
     report=await window.devclean.scan();selected.clear();$('count').textContent=`${report.totals.findings} artefatos encontrados`;
     $('category').replaceChildren(new Option('Todas as ferramentas',''));
@@ -130,10 +140,10 @@ $('scan').onclick=async()=>{
     $('timestamp').textContent=`Última análise: ${new Date(report.scanned_at).toLocaleString('pt-BR')}`;
     stopSpinner();summary();render(true);
     const safe=sum(report.findings.filter(isSafe));
-    status(safe ? `Análise concluída · ${bytes(safe)} podem ir para a Lixeira com segurança` : 'Análise concluída');
+    status(safe ? `Análise concluída · ${bytes(safe)} podem ir ${platform.toTrash} com segurança` : 'Análise concluída');
     if (safe) cat.set('done',`Achei ${bytes(safe)} para limpar sem medo!`);
     else if (report.findings.length) cat.set('done','Tudo conferido. Veja os itens para revisar.');
-    else cat.set('empty','Nada para varrer. Seu Mac está em dia!');
+    else cat.set('empty',`Nada para varrer. Seu ${platform.device} está em dia!`);
   } catch(e){status((e as Error).message,true);breakdown();cat.set('error','Ops! A análise não terminou.');} finally {stopSpinner();setBusy(false);$('scan').textContent='Analisar novamente';}
 };
 
@@ -154,8 +164,52 @@ function selectAndReact(predicate: (f: CleanupFinding) => boolean) {
 $('select-safe').onclick=()=>selectAndReact(()=>true);
 $('select-stale').onclick=()=>selectAndReact(isStale);
 $('select-none').onclick=()=>selectAndReact(()=>false);
+// The volume: everything else in use, what DevClean found, purgeable and free space.
+function disk() {
+  const storage = report?.storage;
+  $('disk').hidden = !storage;
+  if (!report || !storage) return;
+  const d = diskParts(storage, foundOnDevice(report.totals.by_category)), percent = (n: number) => `${Math.round(n / d.total * 100)}%`;
+  $('disk-total').textContent = `${bytes(d.total)} no total`;
+  growStack($('disk-bar'), [[d.other, 'bar-used'], [d.found, 'bar-fill'], [d.purgeable ?? 0, 'bar-amber']], d.total, 30);
+  const rows: [string, string, string, string][] = [
+    ['bar-used', 'Em uso', bytes(d.other), 'Sistema, apps e seus arquivos'],
+    ['bar-fill', 'DevClean achou', bytes(d.found), platform.foundNote],
+    ...d.purgeable === null ? [] : [['bar-amber', 'Liberável pelo sistema', bytes(d.purgeable), platform.purgeableNote] as [string, string, string, string]],
+    ['bar-empty', 'Livre agora', `${bytes(d.free)} · ${percent(d.free)}`, `Até ${bytes(d.freeAfter)} se você limpar tudo`],
+  ];
+  $('disk-detail').replaceChildren(...rows.map(([cls, label, size, note]) => {
+    const row = node('div', undefined, 'disk-row');
+    row.append(node('span', '■', `disk-key ${cls}`), node('span', label, 'disk-label'), node('strong', size), node('small', note));
+    return row;
+  }));
+}
+
+// Folders picked in the Files app (iPhone): chips with a remove button, then a rescan.
+const bridge = window.devclean;
+function folders(labels: string[]) {
+  $('folder-list').replaceChildren(...labels.length ? labels.map((label, index) => {
+    const chip = node('span', label, 'chip'), remove = node('button', '×');
+    remove.type = 'button';remove.disabled = busy;remove.setAttribute('aria-label', `Remover a pasta ${label}`);
+    remove.onclick = () => changeFolders(() => bridge.removeFolder!(index));
+    chip.append(remove);
+    return chip;
+  }) : [node('small', 'Nenhuma pasta. Adicione Downloads ou o iCloud Drive para eu olhar também.')]);
+}
+async function changeFolders(change: () => Promise<string[]>) {
+  if (busy) return;
+  try {const before = $('folder-list').querySelectorAll('.chip').length, labels = await change();folders(labels);if (labels.length !== before) $('scan').click();}
+  catch (e) {status((e as Error).message, true);}
+}
+if (platform.folders && bridge.folders) {
+  $('folders').hidden = false;
+  bridge.folders().then(folders, () => folders([]));
+  $('add-folder').onclick = () => changeFolders(() => bridge.addFolder!());
+}
+
 function summary() {
   if (!report) return;
+  disk();
   const total=report.totals.bytes, safe=sum(report.findings.filter(isSafe)), review=total-safe;
   countUp($('total'),total,bytes);countUp($('safe'),safe,bytes);countUp($('review'),review,bytes);
   growStack($('total-bar'),[[safe,'bar-fill'],[review,'bar-amber']],total,30);
@@ -181,7 +235,8 @@ function selection() {
   button('auto').disabled = busy || !report?.findings.some(f=>f.auto_clean);
 }
 function setBusy(value: boolean) {
-  busy=value;button('scan').disabled=value;button('export').disabled=value||!report;button('tour-open').disabled=value;
+  busy=value;button('scan').disabled=value;button('export').disabled=value||!report;button('tour-open').disabled=value;button('add-folder').disabled=value;
+  for(const remove of $('folder-list').querySelectorAll('button')) remove.disabled=value;
   document.body.classList.toggle('busy', value);
   for(const input of $('list').querySelectorAll('input')) input.disabled=value || !report?.findings[Number(input.dataset.index)]?.cleanup_allowed;
   selection();
@@ -193,19 +248,19 @@ async function clean(automatic: boolean) {
   try {
     const result=await window.devclean.cleanup([...selected],report!.cleanup_token,automatic);
     if(result.canceled) {status('Limpeza cancelada');cat.set('idle','Tudo bem, nada foi movido.');return;}
-    cat.set('cleaning','Pra Lixeira!');
+    cat.set('cleaning',platform.cheer);
     const moved = new Set(result.moved.map(f=>f.path));
     await leave([...$('list').querySelectorAll<HTMLElement>('.row')].filter(row=>moved.has(report!.findings[Number(row.dataset.index)]?.path ?? '')));
     report=result.report;selected.clear();
     summary();render();$('count').textContent=`${report.totals.findings} artefatos restantes`;
     $('warnings').replaceChildren(...report.warnings.map(w=>node('p',w)),...result.errors.map(e=>node('p',`${e.path}: ${e.message}`)));
     const movedBytes=result.moved.reduce((sum,f)=>sum+f.size_bytes,0);
-    status(`${result.moved.length} item(ns) na Lixeira · ${bytes(movedBytes)}. Esvazie a Lixeira para liberar espaço.${result.errors.length?' Alguns itens falharam.':''}`, Boolean(result.errors.length));
+    status(`${result.moved.length} item(ns) ${platform.inTrash} · ${bytes(movedBytes)}. ${platform.freeSpace}${result.errors.length?' Alguns itens falharam.':''}`, Boolean(result.errors.length));
     if (result.errors.length) cat.set('error',`${result.errors.length} item(ns) não saíram. Veja os avisos.`);
-    else cat.set('done',`Prontinho! ${bytes(movedBytes)} a menos. Agora é só esvaziar a Lixeira.`);
+    else cat.set('done',`Prontinho! ${bytes(movedBytes)} a menos. ${platform.catFreeSpace}`);
   } catch(e){status((e as Error).message,true);cat.set('error','Ops! Não consegui limpar.');} finally {setBusy(false);}
 }
 typeIn($('logo'), BANNER);
 // First launch: Floco shows the app before the first scan. Afterwards, scan right away: there is nothing to configure.
-if (tourSeen()) {cat.set('idle','Oi! Já vou dar uma olhada no seu Mac.');$('scan').click();}
+if (tourSeen()) {cat.set('idle',`Oi! Já vou dar uma olhada no seu ${platform.device}.`);$('scan').click();}
 else {cat.set('idle',`Oi! Eu sou o ${CAT_NAME}.`);tour.start();}

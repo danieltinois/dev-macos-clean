@@ -12,12 +12,16 @@
 
 /* Begin PBXFileReference section */
 		D0C1EA000000000000000201 /* DevClean.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DevClean.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		D0C1EA000000000000000204 /* bundle-resources.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "bundle-resources.sh"; sourceTree = "<group>"; };
 		D0C1EA000000000000000203 /* DevCleanKit */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = DevCleanKit; sourceTree = "<group>"; };
+		D0C1EA000000000000000204 /* bundle-resources.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "bundle-resources.sh"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		D0C1EA000000000000000301 /* DevClean */ = {isa = PBXFileSystemSynchronizedRootGroup; path = DevClean; sourceTree = "<group>"; };
+		D0C1EA000000000000000301 /* DevClean */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = DevClean;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -199,6 +203,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 4WQX226684;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -206,6 +211,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = DevClean;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "O DevClean procura vídeos grandes, fotos repetidas, capturas de tela antigas e outras sobras na sua fototeca para você revisar e mandar para Apagados.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphone*]" = YES;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphone*]" = YES;
 				"INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone[sdk=iphone*]" = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -229,6 +235,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 4WQX226684;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -236,6 +243,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = DevClean;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "O DevClean procura vídeos grandes, fotos repetidas, capturas de tela antigas e outras sobras na sua fototeca para você revisar e mandar para Apagados.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphone*]" = YES;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphone*]" = YES;
 				"INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone[sdk=iphone*]" = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";

@@ -9,12 +9,22 @@ public enum BridgeRequest: Equatable, Sendable {
   case cleanup(indices: [Int], token: String, automatic: Bool)
   case reveal(index: Int)
   case export
+  // Folders picked in the Files app (iPhone). Adding opens the system picker,
+  // so the page never names a path; removing takes an index into the list.
+  case folders
+  case addFolder
+  case removeFolder(index: Int)
 
   public init(_ body: Any) throws {
     guard let body = body as? [String: Any], let method = body["method"] as? String else {throw Cleanup.Failure("Pedido inválido.")}
     switch method {
     case "scan": self = .scan
     case "export": self = .export
+    case "folders": self = .folders
+    case "addFolder": self = .addFolder
+    case "removeFolder":
+      guard let index = Self.integer(body["index"]) else {throw Cleanup.Failure("Pasta inválida.")}
+      self = .removeFolder(index: index)
     case "reveal":
       guard let index = Self.integer(body["index"]) else {throw Cleanup.Failure("Item inválido")}
       self = .reveal(index: index)
@@ -50,6 +60,7 @@ public enum BridgeReply {
   public static let canceled = #"{"canceled":true}"#
 
   public static func report(_ report: Report) throws -> String {try json(report)}
+  public static func folders(_ labels: [String]) throws -> String {try json(labels)}
 
   public static func cleanup(_ outcome: Cleanup.Outcome, report: Report) throws -> String {
     struct Moved: Encodable {let path: String; let size_bytes: Int}

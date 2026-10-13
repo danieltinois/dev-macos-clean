@@ -1,0 +1,10 @@
+{
+  "id": "burst-extras",
+  "name": "Fotos extras de rajadas",
+  "category": "photos",
+  "severity": "REVIEW",
+  "reclaimable": false,
+  "description": "Quadros de uma rajada que não são a foto principal nem foram escolhidos por você.",
+  "photos": {"burst": "extra"},
+  "rebuild": {"description": "Não se recria. Fica 30 dias em Fotos › Apagados antes de sumir de vez."}
+}

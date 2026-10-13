@@ -1,9 +1,35 @@
 // Shared data shapes: the rule schema and the report contract (schema_version 1).
+import type {Storage} from './host';
+
 export type Severity = 'SAFE' | 'REVIEW' | 'DANGER';
 
 export interface Rebuild {
   description: string;
   commands: string[];
+}
+
+// Criteria a photo library item must meet (all given ones). See rules.ts.
+export interface PhotoMatch {
+  media?: 'image' | 'video';
+  subtype?: 'screenshot' | 'screen-recording';
+  // `extra`: a burst frame that is neither the key photo nor picked.
+  burst?: 'extra';
+  // `extra`: an exact copy of an older item (same kind, pixel size, duration and bytes).
+  duplicate?: 'extra';
+  // `device`: the original is on the device (or unknown); `cloud`: only in iCloud.
+  stored?: 'device' | 'cloud';
+  min_bytes?: number;
+  min_age_days?: number;
+}
+
+// Criteria a file from a picked folder must meet (all given ones). See rules.ts.
+export interface FileMatch {
+  // `device`: the content is on the device (or unknown); `cloud`: only in iCloud Drive.
+  stored?: 'device' | 'cloud';
+  // A folder with this name anywhere in the file's path, e.g. Downloads.
+  folder?: string;
+  min_bytes?: number;
+  min_age_days?: number;
 }
 
 export interface Rule {
@@ -16,6 +42,10 @@ export interface Rule {
   paths: string[];
   patterns: string[];
   markers: string[];
+  // Photo library rules match items the host lists instead of paths.
+  photos: PhotoMatch | null;
+  // File rules match files in folders the user picked (iPhone).
+  files: FileMatch | null;
   rebuild: Rebuild | null;
 }
 
@@ -49,4 +79,6 @@ export interface Report {
   totals: Totals;
   findings: Finding[];
   warnings: string[];
+  // Space on the scanned volume, when the host can tell.
+  storage: Storage | null;
 }

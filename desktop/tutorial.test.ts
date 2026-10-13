@@ -2,13 +2,16 @@ import {test} from 'bun:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import path from 'node:path';
-import {STEPS, placeGuide, stepText, type Box} from './tutorial';
+import {PLATFORMS, currentPlatform} from './platform';
+import {placeGuide, stepsFor, stepText, type Box} from './tutorial';
+
+const TOURS = Object.values(PLATFORMS).map(platform => [platform.id, stepsFor(platform)] as const);
 
 const html = readFileSync(path.join(import.meta.dirname, 'index.html'), 'utf8');
 const renderer = readFileSync(path.join(import.meta.dirname, 'renderer.ts'), 'utf8');
 
 test('every step points at something that exists in the page', () => {
-  for (const target of STEPS.flatMap(step => [step.target ?? []].flat())) {
+  for (const target of TOURS.flatMap(([, steps]) => steps.flatMap(step => [step.target ?? []].flat()))) {
     for (const token of target.split(/\s+/)) {
       const name = token.slice(1);
       if (token.startsWith('#')) assert.ok(html.includes(`id="${name}"`), `${target}: no #${name} in index.html`);
@@ -19,15 +22,30 @@ test('every step points at something that exists in the page', () => {
 });
 
 test('the tour opens and closes centered, and every line fits the bubble', () => {
-  assert.equal(STEPS[0]!.target, undefined);
-  assert.equal(STEPS.at(-1)!.mood, 'done');
-  for (const step of STEPS) for (const scanned of [false, true]) {
-    const text = stepText(step, {scanned});
-    assert.ok(text.length > 20 && text.length <= 190, text);
+  for (const [id, steps] of TOURS) {
+    assert.equal(steps[0]!.target, undefined, id);
+    assert.equal(steps.at(-1)!.mood, 'done');
+    for (const step of steps) for (const scanned of [false, true]) {
+      const text = stepText(step, {scanned});
+      assert.ok(text.length > 20 && text.length <= 190, text);
+    }
+    // Before the first scan the tour promises to start it; afterwards it doesn't.
+    assert.match(stepText(steps.at(-1)!, {scanned: false}), /começo a análise/);
+    assert.doesNotMatch(stepText(steps.at(-1)!, {scanned: true}), /começo a análise/);
   }
-  // Before the first scan the tour promises to start it; afterwards it doesn't.
-  assert.match(stepText(STEPS.at(-1)!, {scanned: false}), /começo a análise/);
-  assert.doesNotMatch(stepText(STEPS.at(-1)!, {scanned: true}), /começo a análise/);
+});
+
+test('the iPhone tour talks about the iPhone and skips what it does not have', () => {
+  const steps = stepsFor(PLATFORMS.ios), text = steps.map(step => stepText(step, {scanned: true})).join(' ');
+  assert.ok(!steps.some(step => step.target === '#auto'));
+  assert.match(text, /iPhone/);
+  assert.doesNotMatch(text, /Mac|Finder|Lixeira/);
+});
+
+test('shells that report no platform are the Mac', () => {
+  assert.equal(currentPlatform(undefined).id, 'mac');
+  assert.equal(currentPlatform('ios').id, 'ios');
+  assert.equal(currentPlatform('android').id, 'mac');
 });
 
 const VIEW = {width: 1280, height: 850}, GUIDE = {width: 560, height: 230};

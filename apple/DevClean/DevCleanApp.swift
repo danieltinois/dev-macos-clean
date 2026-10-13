@@ -1,19 +1,15 @@
 import SwiftUI
 
+// One window running the shared UI (see WebShell.swift), like the Electron app.
 @main
 struct DevCleanApp: App {
-#if os(macOS)
   var body: some Scene {
-    // One window, like the Electron app.
+#if os(macOS)
     Window("DevClean", id: "main") {DesktopWindow()}
       .windowStyle(.hiddenTitleBar)
       .defaultSize(width: 1280, height: 850)
-  }
 #else
-  @State private var model = AppModel()
-
-  var body: some Scene {
-    WindowGroup {ContentView().environment(model)}
-  }
+    WindowGroup {PhoneWindow()}
 #endif
+  }
 }

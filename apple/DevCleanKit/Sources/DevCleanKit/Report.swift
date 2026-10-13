@@ -68,6 +68,14 @@ public struct ReportOptions: Codable, Hashable, Sendable {
   enum CodingKeys: String, CodingKey {case globalScan = "global_scan", maxDepth = "max_depth", maxFindings = "max_findings", excludes, categories}
 }
 
+// Space on the scanned volume (core/host.ts Storage).
+public struct Storage: Codable, Hashable, Sendable {
+  public var totalBytes: Int
+  public var freeBytes: Int
+  public var purgeableBytes: Int?
+  enum CodingKeys: String, CodingKey {case totalBytes = "total_bytes", freeBytes = "free_bytes", purgeableBytes = "purgeable_bytes"}
+}
+
 public struct Report: Codable, Hashable, Sendable {
   public var schemaVersion: Int
   public var scannedAt: String
@@ -76,9 +84,11 @@ public struct Report: Codable, Hashable, Sendable {
   public var totals: Totals
   public var findings: [Finding]
   public var warnings: [String]
+  // nil in reports from older versions.
+  public var storage: Storage?
   public var cleanupToken: String?
   enum CodingKeys: String, CodingKey {
-    case schemaVersion = "schema_version", scannedAt = "scanned_at", roots, options, totals, findings, warnings, cleanupToken = "cleanup_token"
+    case schemaVersion = "schema_version", scannedAt = "scanned_at", roots, options, totals, findings, warnings, storage, cleanupToken = "cleanup_token"
   }
 
   public var scannedDate: Date? {parseISODate(scannedAt)}
