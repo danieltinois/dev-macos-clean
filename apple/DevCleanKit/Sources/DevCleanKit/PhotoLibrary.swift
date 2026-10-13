@@ -7,7 +7,9 @@
 import AVFoundation
 import Foundation
 import Photos
+import UIKit
 import UniformTypeIdentifiers
+import Vision
 
 public enum PhotoLibrary {
   public static let prefix = "photos://"
@@ -22,7 +24,8 @@ public enum PhotoLibrary {
   public static var hasLimitedAccess: Bool {PHPhotoLibrary.authorizationStatus(for: .readWrite) == .limited}
 
   // Every visible item (hidden ones stay out) as the engine's PhotoAsset.
-  @Sendable public static func assets() throws -> [[String: Any]] {
+  // Comparing similar photos can take a while; `progress` gets status lines (pt-BR).
+  public static func assets(progress: @Sendable (String) -> Void = {_ in}) throws -> [[String: Any]] {
     let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
     guard status == .authorized || status == .limited else {
       throw EngineError(message: "Sem acesso às Fotos. Permita em Ajustes › DevClean › Fotos.")
@@ -32,8 +35,71 @@ public enum PhotoLibrary {
     var assets: [PHAsset] = []
     PHAsset.fetchAssets(with: options).enumerateObjects {asset, _, _ in assets.append(asset)}
     let cloud = inCloud(assets.map(\.localIdentifier))
-    return assets.map {describe($0, cloud: cloud)}
+    let similar = similarGroups(assets, progress: progress)
+    return assets.map {asset in
+      var item = describe(asset, cloud: cloud)
+      item["favorite"] = asset.isFavorite
+      item["similar"] = similar[asset.localIdentifier]?.group ?? NSNull()
+      item["score"] = similar[asset.localIdentifier]?.score ?? NSNull()
+      return item
+    }
   }
+
+  // Camera photos taken in a row (no screenshots, no bursts: those have their own
+  // rules) that look alike, with each member's score. See SimilarPhotos.
+  private static func similarGroups(_ assets: [PHAsset], progress: @Sendable (String) -> Void) -> [String: (group: String, score: Any)] {
+    let photos = assets.filter {$0.mediaType == .image && !$0.mediaSubtypes.contains(.photoScreenshot) && $0.burstIdentifier == nil && $0.creationDate != nil}
+    let byId = Dictionary(photos.map {($0.localIdentifier, $0)}, uniquingKeysWith: {a, _ in a})
+    let sessions = SimilarPhotos.sessions(photos.map {SimilarPhotos.Photo(id: $0.localIdentifier, date: $0.creationDate!)})
+    let total = sessions.reduce(0) {$0 + $1.count}
+    var result: [String: (group: String, score: Any)] = [:], done = 0
+    for session in sessions {
+      var prints: [(id: String, print: VNFeaturePrintObservation)] = []
+      for photo in session {
+        if done % 20 == 0 {progress("Comparando fotos parecidas… \(done) de \(total)")}
+        done += 1
+        if let asset = byId[photo.id], let print = analysis(asset).print {prints.append((photo.id, print))}
+      }
+      for group in SimilarPhotos.groups(prints) {
+        for id in group {result[id] = (group[0], byId[id].flatMap {analysis($0, scored: true).score} ?? NSNull())}
+      }
+    }
+    return result
+  }
+
+  // Feature print and score of one photo, kept per app session (keyed by id and
+  // edit date) so a new scan after picking a folder doesn't redo the work.
+  private static func analysis(_ asset: PHAsset, scored: Bool = false) -> (print: VNFeaturePrintObservation?, score: Double?) {
+    let key = "\(asset.localIdentifier)@\(asset.modificationDate?.timeIntervalSince1970 ?? 0)"
+    let cached = cache.get(key)
+    if let cached, !scored || cached.score != nil {return cached}
+    guard let image = thumbnail(asset) else {return (nil, nil)}
+    let entry = (print: cached?.print ?? SimilarPhotos.featurePrint(image), score: scored ? SimilarPhotos.score(image) : nil)
+    cache.set(key, entry)
+    return entry
+  }
+
+  // A small local thumbnail; nothing is downloaded from iCloud.
+  private static func thumbnail(_ asset: PHAsset) -> CGImage? {
+    let options = PHImageRequestOptions()
+    options.isSynchronous = true
+    options.deliveryMode = .highQualityFormat
+    options.resizeMode = .fast
+    options.isNetworkAccessAllowed = false
+    let box = ImageBox()
+    PHImageManager.default().requestImage(for: asset, targetSize: CGSize(width: 360, height: 360), contentMode: .aspectFit, options: options) {image, _ in box.image = image?.cgImage}
+    return box.image
+  }
+
+  private final class ImageBox: @unchecked Sendable {var image: CGImage?}
+
+  private final class Cache: @unchecked Sendable {
+    private var entries: [String: (print: VNFeaturePrintObservation?, score: Double?)] = [:]
+    private let lock = NSLock()
+    func get(_ key: String) -> (print: VNFeaturePrintObservation?, score: Double?)? {lock.withLock {entries[key]}}
+    func set(_ key: String, _ value: (print: VNFeaturePrintObservation?, score: Double?)) {lock.withLock {entries[key] = value}}
+  }
+  private static let cache = Cache()
 
   // Items in iCloud Photos: those with a cloud identifier. nil when it can't tell.
   private static func inCloud(_ ids: [String]) -> Set<String>? {

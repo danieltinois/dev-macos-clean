@@ -3,7 +3,7 @@ import {test} from 'bun:test';
 import assert from 'node:assert/strict';
 import {loadRules, nodeHost} from './node';
 import * as policy from './policy';
-import {duplicateExtras, photoMatches, scan} from './scanner';
+import {duplicateExtras, photoMatches, scan, similarExtras} from './scanner';
 import type {PhotoAsset} from './host';
 
 const DAY = 86400000, NOW = Date.parse('2026-10-13T12:00:00Z');
@@ -55,6 +55,23 @@ test('a copy on the iPhone of an original only in iCloud is still a copy', () =>
   const copy = (id: string, created_ms: number, local: boolean) => asset({id, created_ms, local, width: 4032, height: 3024, bytes: 3_000_000});
   const report = scan(photoHost(() => [copy('original', NOW - DAY, false), copy('copy', NOW, true)]), loadRules(), {home: '/nonexistent', sources: ['photos'], now: NOW});
   assert.deepEqual(report.findings.map(f => [f.rule_id, f.path]), [['duplicate-photos', `${policy.PHOTO_PREFIX}copy`]]);
+});
+
+test('in a group of similar photos the favorite or the best one stays', () => {
+  const shot = (id: string, fields: Partial<PhotoAsset>) => asset({id, name: `${id}.HEIC`, bytes: 2_000_000, ...fields});
+  const keepers = (library: PhotoAsset[]) => Object.fromEntries([...similarExtras(library)].map(([id, keeper]) => [id, keeper.id]));
+  assert.deepEqual(keepers([shot('a', {similar: 'g', score: 0.2}), shot('b', {similar: 'g', score: 0.9}), shot('c', {similar: 'g', score: 0.5}), shot('d', {similar: 'h'})]), {a: 'b', c: 'b'});
+  // A favorite stays even when another scores better, and no favorite is ever offered.
+  assert.deepEqual(keepers([shot('a', {similar: 'g', score: 0.9}), shot('b', {similar: 'g', score: 0.1, favorite: true}), shot('c', {similar: 'g', favorite: true})]), {a: 'b'});
+  // Without scores, the larger photo stays.
+  assert.deepEqual(keepers([shot('a', {similar: 'g'}), shot('b', {similar: 'g', bytes: 3_000_000})]), {a: 'b'});
+  assert.deepEqual(keepers([shot('a', {}), shot('b', {similar: null})]), {});
+});
+
+test('similar photos become findings that say which photo stays', () => {
+  const shot = (id: string, score: number) => asset({id, name: `${id}.HEIC`, bytes: 2_000_000, similar: 'g', score});
+  const report = scan(photoHost(() => [shot('try1', 0.3), shot('best', 0.8), {...shot('try2', 0.1), local: false}]), loadRules(), {home: '/nonexistent', sources: ['photos'], now: NOW});
+  assert.deepEqual(report.findings.map(f => [f.rule_id, f.path, f.metadata['Fica']]), [['similar-photos', `${policy.PHOTO_PREFIX}try1`, 'best.HEIC']]);
 });
 
 test('photo items become findings with a photos:// path and a readable label', () => {

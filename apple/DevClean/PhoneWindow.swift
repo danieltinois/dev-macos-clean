@@ -43,8 +43,9 @@ final class PhoneActions: ShellActions {
     defer {busy = false}
     _ = await PhotoLibrary.requestAccess()
     let home = NSHomeDirectory(), appRoot = Bundle.main.bundlePath, folders = picked
+    let progress: @Sendable (String) -> Void = {[weak shell] text in Task {@MainActor in shell?.progress(text)}}
     var prepared = try await Task.detached(priority: .userInitiated) {
-      let engine = try Engine.bundled(host: NativeHost(home: home, photos: PhotoLibrary.assets, files: {PickedFolders.items(in: folders)}))
+      let engine = try Engine.bundled(host: NativeHost(home: home, photos: {try PhotoLibrary.assets(progress: progress)}, files: {PickedFolders.items(in: folders)}))
       var options = ScanOptions(home: home, sources: ["photos", "files"])
       options.maxFindings = 5000
       return try Cleanup.prepare(engine.scan(options), engine: engine, home: home, appRoot: appRoot, identity: Self.identity)

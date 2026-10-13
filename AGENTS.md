@@ -63,13 +63,16 @@ both builds: the Swift apps run the same engine.
   (`desktop/index.html`, `renderer.ts`, `style.css`) in a WKWebView, so Swift
   holds no rules, policy or UI of its own. `DevClean/WebShell.swift` is the
   shared shell (the counterpart of `main.ts` + `preload.ts`: `window.devclean`
-  over script messages, plus `platform`). `DesktopWindow.swift` (`MacActions`:
+  over script messages, plus `platform`; long scans push `devclean-progress`
+  events to the page). `DesktopWindow.swift` (`MacActions`:
   disk and Trash) and `PhoneWindow.swift` (`PhoneActions`: photo library and
   Recently Deleted) answer its calls. `desktop/platform.ts` holds the texts
   and buttons that differ per platform. `DevCleanKit/` has `Engine.swift` (the
   JavaScriptCore bridge), `NativeHost.swift` (the Host: POSIX calls plus a
   native `measure`, the hot loop, `storage`, and optional `photos` and `files`),
-  `PhotoLibrary.swift` (PhotoKit: list, identity, delete), `PickedFolders.swift`
+  `PhotoLibrary.swift` (PhotoKit: list, identity, delete, similar-photo analysis),
+  `SimilarPhotos.swift` (Vision feature prints and scores, testable on the Mac),
+  `PickedFolders.swift`
   (folders picked in the Files app, kept as bookmarks), `Cleanup.swift` (the trusted side:
   identities, tokens, Trash), `Bridge.swift` (validates page requests, builds
   replies and the confirmation) and `Report.swift`. The project uses a

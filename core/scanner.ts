@@ -84,6 +84,21 @@ export function duplicateExtras(assets: PhotoAsset[]): Set<string> {
   return extras;
 }
 
+// For each photo that is not the keeper of its `similar` group, the photo that stays.
+// Favorites stay; without one, the best score stays (then the larger, then the older).
+export function similarExtras(assets: PhotoAsset[]): Map<string, PhotoAsset> {
+  const groups = new Map<string, PhotoAsset[]>();
+  for (const asset of assets) if (asset.similar) groups.set(asset.similar, [...groups.get(asset.similar) ?? [], asset]);
+  const extras = new Map<string, PhotoAsset>();
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    const ranked = [...group].sort((a, b) => Number(b.favorite ?? false) - Number(a.favorite ?? false) || (b.score ?? -Infinity) - (a.score ?? -Infinity) ||
+      (b.bytes ?? 0) - (a.bytes ?? 0) || a.created_ms - b.created_ms || compare(a.id, b.id));
+    for (const asset of ranked.slice(1)) if (!asset.favorite) extras.set(asset.id, ranked[0]!);
+  }
+  return extras;
+}
+
 // Where the original is, for the details dialog (items only in iCloud never get here).
 function storedAt({local, cloud}: PhotoAsset): string | null {
   if (local && cloud) return 'No iPhone e no iCloud. Para tirar do iPhone sem apagar, ligue Ajustes › Fotos › Otimizar Armazenamento do iPhone.';
@@ -91,12 +106,14 @@ function storedAt({local, cloud}: PhotoAsset): string | null {
   return null;
 }
 
-// Whether a photo library item meets every criterion of `match`. `extras` comes from duplicateExtras().
-export function photoMatches(match: PhotoMatch, asset: PhotoAsset, now: number, extras: Set<string> = new Set()): boolean {
+// Whether a photo library item meets every criterion of `match`. `extras` and
+// `similar` come from duplicateExtras() and similarExtras().
+export function photoMatches(match: PhotoMatch, asset: PhotoAsset, now: number, extras: Set<string> = new Set(), similar: Map<string, PhotoAsset> = new Map()): boolean {
   return (!match.media || asset.media === match.media) &&
     (!match.subtype || asset.subtypes.includes(match.subtype)) &&
     (!match.burst || asset.burst === match.burst) &&
     (!match.duplicate || extras.has(asset.id)) &&
+    (!match.similar || similar.has(asset.id)) &&
     (match.min_bytes === undefined || (asset.bytes !== null && asset.bytes >= match.min_bytes)) &&
     (match.min_age_days === undefined || now - asset.created_ms >= match.min_age_days * 86400000);
 }
@@ -190,10 +207,10 @@ export function scan(host: Host, rules: Rule[], options: Partial<ScanOptions> = 
   if (photoRules.length && !full()) {
     let assets: PhotoAsset[] = [];
     try {assets = host.photos!();} catch (error) {warnings.push(`cannot read photos: ${(error as Error).message}`);}
-    const now = opts.now ?? Date.now(), extras = duplicateExtras(assets);
+    const now = opts.now ?? Date.now(), extras = duplicateExtras(assets), similar = similarExtras(assets);
     for (const asset of assets) {
       if (asset.local === false) continue;
-      const rule = photoRules.find(rule => photoMatches(rule.photos!, asset, now, extras));
+      const rule = photoRules.find(rule => photoMatches(rule.photos!, asset, now, extras, similar));
       if (!rule) continue;
       if (full()) {stopped(); break;}
       const stored = storedAt(asset);
@@ -202,7 +219,7 @@ export function scan(host: Host, rules: Rule[], options: Partial<ScanOptions> = 
         reclaimable: rule.reclaimable, description: rule.description, path: PHOTO_PREFIX + asset.id,
         size_bytes: asset.bytes ?? 0, size_complete: asset.bytes !== null,
         last_modified: new Date(asset.created_ms).toISOString(), rebuild: rule.rebuild,
-        metadata: {label: asset.name, ...stored ? {'Onde está': stored} : {}},
+        metadata: {label: asset.name, ...stored ? {'Onde está': stored} : {}, ...rule.photos!.similar ? {'Fica': similar.get(asset.id)!.name} : {}},
       });
     }
   }

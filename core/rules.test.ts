@@ -57,7 +57,7 @@ test('photo rules are validated strictly', () => {
 });
 test('photo and file rules ship for the iPhone, all for review', () => {
   const photos = loadRules().filter(rule => rule.photos || rule.files);
-  assert.deepEqual(photos.map(rule => rule.id), ['burst-extras', 'duplicate-photos', 'large-files', 'large-photos', 'large-videos', 'old-downloads', 'screen-recordings', 'screenshots']);
+  assert.deepEqual(photos.map(rule => rule.id), ['burst-extras', 'duplicate-photos', 'large-files', 'large-photos', 'large-videos', 'old-downloads', 'screen-recordings', 'screenshots', 'similar-photos']);
   for (const rule of photos) {
     assert.equal(rule.severity, 'REVIEW', rule.id);
     assert.deepEqual([rule.paths, rule.patterns, rule.markers], [[], [], []]);

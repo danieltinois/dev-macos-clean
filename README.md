@@ -357,8 +357,10 @@ Trash, and TypeScript decides what each item is and what may be cleaned.
 - **iPhone** — the same interface, adapted to the phone screen. iOS gives no
   access to the disk or to other apps' data, so the iPhone app looks at what
   takes space **on the phone** in the **whole photo library**: videos of 50 MB or
-  more, photos of 15 MB or more (ProRAW, panoramas), exact copies, screenshots,
-  screen recordings and extra burst frames. Items whose original is only in
+  more, photos of 15 MB or more (ProRAW, panoramas), exact copies, **similar
+  photos** (retakes of the same moment, compared on the device with Apple's Vision;
+  favorites or the best-rated one stay), screenshots, screen recordings and extra
+  burst frames. Items whose original is only in
   iCloud take no space on the phone, so they are left out. For items both on the
   iPhone and in iCloud, it points to **Optimize iPhone Storage**, which removes
   the original from the iPhone without deleting it.
@@ -396,7 +398,7 @@ the Electron app, needs **Full Disk Access** to measure some folders.
 | Android / Java | Gradle caches, Gradle Wrapper | System images, AVDs, Maven repository |
 | Rust / Go / Python / Dart | `target/` of Cargo projects, Cargo registry, Go build and modules, pip, pub cache | |
 | IDEs / other | JetBrains and Android Studio caches, Homebrew | Docker (`docker system prune`), app caches, logs, Downloads |
-| iPhone (photos and Files) | | Large videos and photos, exact copies, screenshots, screen recordings, extra burst frames, large files, old downloads |
+| iPhone (photos and Files) | | Large videos and photos, exact copies, similar photos, screenshots, screen recordings, extra burst frames, large files, old downloads |
 
 To add a new tool, add a JSON file in `rules/` and, if its cleanup is low risk,
 its fixed path in `core/policy.ts`.

@@ -27,6 +27,12 @@ export interface PhotoAsset {
   width: number;
   height: number;
   duration_ms: number;
+  // Image analysis, on hosts that do it (the iPhone): photos that look alike and
+  // were taken together share a `similar` group; `score` rates how good a photo
+  // is (higher is better). Favorites are never offered as similar photos.
+  favorite?: boolean;
+  similar?: string | null;
+  score?: number | null;
 }
 
 // One file in a folder the user picked in the Files app (iPhone).

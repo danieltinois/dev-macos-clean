@@ -82,6 +82,13 @@ final class WebShell: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDel
     """
   }
 
+  // Status text for long calls, sent to the page as a `devclean-progress` event.
+  // The page only reads it; nothing comes back.
+  func progress(_ text: String) {
+    guard let data = try? JSONSerialization.data(withJSONObject: [text]), let json = String(data: data, encoding: .utf8) else {return}
+    webView.evaluateJavaScript("window.dispatchEvent(new CustomEvent('devclean-progress', {detail: \(json)[0]}))", completionHandler: nil)
+  }
+
   // MARK: window.devclean
 
   func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) async -> (Any?, String?) {

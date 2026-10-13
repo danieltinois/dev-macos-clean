@@ -7,7 +7,7 @@ import type {FileMatch, PhotoMatch, Rule, Severity} from './types';
 export const SEVERITIES: readonly Severity[] = ['SAFE', 'REVIEW', 'DANGER'];
 const SLUG = /^[a-z0-9][a-z0-9-]*$/;
 const RULE_KEYS = new Set(['id', 'name', 'category', 'severity', 'reclaimable', 'description', 'paths', 'patterns', 'markers', 'photos', 'files', 'rebuild']);
-const PHOTO_VALUES: Record<string, readonly string[]> = {media: ['image', 'video'], subtype: ['screenshot', 'screen-recording'], burst: ['extra'], duplicate: ['extra']};
+const PHOTO_VALUES: Record<string, readonly string[]> = {media: ['image', 'video'], subtype: ['screenshot', 'screen-recording'], burst: ['extra'], duplicate: ['extra'], similar: ['extra']};
 const NUMBERS = ['min_bytes', 'min_age_days'];
 
 // Photo and file criteria: each key is a known choice, a non-negative integer or,

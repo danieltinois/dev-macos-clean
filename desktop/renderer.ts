@@ -15,7 +15,7 @@ const value = (id: string) => $<HTMLInputElement | HTMLSelectElement>(id).value;
 const button = (id: string) => $<HTMLButtonElement>(id);
 let report: CleanupReport | null = null, activeIndex: number | null = null, busy = false;
 const selected = new Set<number>();
-const names: Record<string, string> = {node:'Node.js', xcode:'Xcode', android:'Android', python:'Python', rust:'Rust', go:'Go', java:'Java', flutter:'Flutter', docker:'Docker', ide:'IDEs', macos:'macOS', downloads:'Downloads', logs:'Logs', homebrew:'Homebrew', videos:'Vídeos', screenshots:'Capturas', photos:'Fotos', duplicates:'Repetidas'};
+const names: Record<string, string> = {node:'Node.js', xcode:'Xcode', android:'Android', python:'Python', rust:'Rust', go:'Go', java:'Java', flutter:'Flutter', docker:'Docker', ide:'IDEs', macos:'macOS', downloads:'Downloads', logs:'Logs', homebrew:'Homebrew', videos:'Vídeos', screenshots:'Capturas', photos:'Fotos', duplicates:'Repetidas', similar:'Parecidas'};
 const platform = currentPlatform(window.devclean.platform);
 function ageDays(f: CleanupFinding) {const t = Date.parse(f.last_modified ?? '');return Number.isNaN(t) ? null : Math.floor((Date.now()-t)/86400000);}
 function ago(days: number | null) {if (days === null) return '';if (days < 1) return 'hoje';if (days < 31) return `há ${days} dia(s)`;if (days < 365) return `há ${Math.floor(days/30)} mês(es)`;return `há ${(days/365).toLocaleString('pt-BR',{maximumFractionDigits:1})} ano(s)`;}
@@ -63,18 +63,24 @@ function tips(): string[] {
 }
 
 // Braille spinner on the scan button and status line, plus a ░▒▓█ sweep in the chart.
-let spinner: ReturnType<typeof setInterval> | null = null, stopSweep: (() => void) | null = null;
+let spinner: ReturnType<typeof setInterval> | null = null, stopSweep: (() => void) | null = null, spinnerText = '';
 function startSpinner(label: string, text: string) {
   stopSpinner();
-  let frame = 0;
-  const draw = () => {const f = SPINNER[frame++ % SPINNER.length];$('scan').textContent=`${f} ${label}`;$('status').textContent=`${f} ${text}`;$('status').className='';};
+  let frame = 0;spinnerText = text;
+  const draw = () => {const f = SPINNER[frame++ % SPINNER.length];$('scan').textContent=`${f} ${label}`;$('status').textContent=`${f} ${spinnerText}`;$('status').className='';};
   draw();
   if (!reduced()) spinner = setInterval(draw, 80);
   const scanning = node('pre', undefined, 'sweep');
   $('breakdown').replaceChildren(scanning);$('breakdown-hint').textContent='analisando…';
   stopSweep = sweep(scanning, 6, 30);
 }
-function stopSpinner() {if (spinner) clearInterval(spinner);spinner = null;stopSweep?.();stopSweep = null;}
+function stopSpinner() {if (spinner) clearInterval(spinner);spinner = null;spinnerText = '';stopSweep?.();stopSweep = null;}
+// Long steps (comparing similar photos on the iPhone) report how far they are.
+window.addEventListener('devclean-progress', event => {
+  if (!spinnerText) return;
+  spinnerText = String((event as CustomEvent).detail);
+  if (!spinner) $('status').textContent = spinnerText;
+});
 
 // One clickable block-chart row per tool, largest first, on a shared scale. Clicking filters the results.
 function breakdown() {

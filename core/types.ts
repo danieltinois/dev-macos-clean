@@ -16,6 +16,8 @@ export interface PhotoMatch {
   burst?: 'extra';
   // `extra`: an exact copy of an older item (same kind, pixel size, duration and bytes).
   duplicate?: 'extra';
+  // `extra`: a photo that looks like a better one taken at the same moment.
+  similar?: 'extra';
   min_bytes?: number;
   min_age_days?: number;
 }
