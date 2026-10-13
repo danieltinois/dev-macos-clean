@@ -166,7 +166,7 @@ struct CleanupBar: View {
         .devButton(.subtle, minHeight: compact ? 36 : 0)
         .disabled(busy || !model.canSelectAll)
         .help("Seleciona os itens visíveis que podem ir \(model.platform.toTrash), inclusive itens para revisar")
-      if model.platform.automatic {
+      if model.platform.staleProjects {
         Button("Projetos parados (90+ dias)\(model.hasStale ? " · \(Labels.bytes(model.staleBytes))" : "")") {model.quickSelect(\.isStale)}
           .devButton(.subtle, minHeight: compact ? 36 : 0)
           .disabled(busy || !model.hasStale)

@@ -89,9 +89,10 @@ This tool deletes things on users' machines. Treat these as hard rules:
    be moved**. A rule never grants cleanup. Cleanup needs an explicit,
    home-relative entry in `targets`/`reviewTargets` (or `projectOutputs` with a
    marker file) in `policy.ts`; photo and Files items need their rule in
-   `photoTargets`/`fileTargets` and are always REVIEW (Files: regular files
-   only). The trusted side (`apple/DevCleanKit/.../Cleanup.swift` and the
-   `ShellActions` in `apple/DevClean/`) applies that policy and does the move. Identity checks and the move itself never run in
+   `photoTargets`/`fileTargets` and are REVIEW (Files: regular files only),
+   except the SAFE photo rules in `photoAutomatic` (byte-identical copies and
+   burst extras: one item always stays). The trusted side
+   (`apple/DevCleanKit/.../Cleanup.swift` and the `Actions` in `apple/DevClean/`) applies that policy and does the move. Identity checks and the move itself never run in
    the engine.
 2. Cleanup only ever uses `FileManager.trashItem`. Never add permanent
    deletion (`removeItem`, `rm`, `unlink`) of user paths, and
@@ -108,8 +109,9 @@ This tool deletes things on users' machines. Treat these as hard rules:
 5. No web content: the app shows no web view and loads nothing remote.
 6. Only the user's own clicks start cleanup. The confirmation dialog defaults to
    **Cancelar** (on the iPhone too, for Files items; photos get the system's own
-   confirmation), and REVIEW items are never `auto_clean`. The iPhone has no
-   automatic cleanup at all.
+   confirmation, automatic or not), and REVIEW items are never `auto_clean`. On
+   the iPhone, automatic cleanup only takes photos from `photoAutomatic`, never
+   files, and copies only count when the content hashes (SHA-256) match.
 
 ## Gotchas
 

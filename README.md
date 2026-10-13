@@ -350,23 +350,30 @@ Trash, and TypeScript decides what each item is and what may be cleaned.
 - **iPhone** — the same interface, adapted to the phone screen. iOS gives no
   access to the disk or to other apps' data, so the iPhone app looks at what
   takes space **on the phone** in the **whole photo library**: videos of 50 MB or
-  more, photos of 15 MB or more (ProRAW, panoramas), exact copies, **similar
+  more, photos of 15 MB or more (ProRAW, panoramas), byte-identical copies
+  (checked by content hash), **similar
   photos** (retakes of the same moment, compared on the device with Apple's Vision;
   favorites or the best-rated one stay), screenshots, screen recordings and extra
   burst frames. Items whose original is only in
   iCloud take no space on the phone, so they are left out. For items both on the
   iPhone and in iCloud, it points to **Optimize iPhone Storage**, which removes
   the original from the iPhone without deleting it.
-  Everything is for review only (there is no automatic cleanup): you pick the
-  items, iOS asks for its own confirmation, and they go to **Photos › Recently
-  Deleted**, where they stay for 30 days. With limited photo access, the app only
+  **Limpeza automática** (automatic cleanup) takes only what loses nothing:
+  identical copies (the oldest stays) and burst frames nobody picked (the key
+  photo stays). Everything else is for review: you pick the items. Either way iOS
+  asks for its own confirmation, and they go to **Photos › Recently Deleted**,
+  where they stay for 30 days. With limited photo access, the app only
   sees the photos you allowed. **Abrir para conferir** (open to check) in the
   details opens the item in Quick Look.
-  With **+ Pasta do Arquivos** (add a Files folder) you pick folders from the
-  Files app (Downloads, all of iCloud Drive…) for it to look at too: files of
-  50 MB or more stored on the iPhone and downloads older than 30 days. These go
-  to **Recently Deleted** in the Files app, after a confirmation that defaults to
-  Cancelar. iOS doesn't let any app see other apps' data or System Data.
+  With **+ Pasta do Arquivos** (add a Files folder) you pick one or more folders
+  from the Files app; picking **On My iPhone** and **iCloud Drive** covers
+  everything iOS lets an app see, including the folders other apps share there.
+  It looks for files of 50 MB or more stored on the iPhone, duplicate files
+  (same content hash, whatever the name), caches and temporary files of apps,
+  installers and archives (`.zip`, `.ipa`, `.dmg`…), log files and downloads
+  older than 30 days. These are always for review and go to **Recently Deleted**
+  in the Files app, after a confirmation that defaults to Cancelar. iOS doesn't
+  let any app see other apps' private data, their caches or System Data.
 - **Mac and iPhone** — a panel shows the disk space: what is in use, what
   DevClean found, what the system frees by itself (Swift app only), and how much
   is free now and after cleanup. The CLI also shows free space.
@@ -391,7 +398,7 @@ The Mac app doesn't use App Sandbox (it needs to read the whole disk) and needs
 | Android / Java | Gradle caches, Gradle Wrapper | System images, AVDs, Maven repository |
 | Rust / Go / Python / Dart | `target/` of Cargo projects, Cargo registry, Go build and modules, pip, pub cache | |
 | IDEs / other | JetBrains and Android Studio caches, Homebrew | Docker (`docker system prune`), app caches, logs, Downloads |
-| iPhone (photos and Files) | | Large videos and photos, exact copies, similar photos, screenshots, screen recordings, extra burst frames, large files, old downloads |
+| iPhone (photos and Files) | Identical photo copies, extra burst frames | Large videos and photos, similar photos, screenshots, screen recordings, large and duplicate files, app caches, installers, logs, old downloads |
 
 To add a new tool, add a JSON file in `rules/` and, if its cleanup is low risk,
 its fixed path in `core/policy.ts`.

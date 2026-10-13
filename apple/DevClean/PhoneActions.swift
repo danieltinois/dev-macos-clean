@@ -2,8 +2,8 @@
 // Files app with the TypeScript engine, and send confirmed items to Recently
 // Deleted (in Photos or in Files).
 // Cleanup starts only from the user's tap. Files need our confirmation, which
-// defaults to Cancelar; photos get the system's own. Nothing on the iPhone is
-// cleaned automatically.
+// defaults to Cancelar; photos get the system's own. Automatic cleanup only takes
+// what the engine marks automatic: byte-identical photo copies and burst extras.
 #if os(iOS)
 import DevCleanKit
 import QuickLook
@@ -57,12 +57,12 @@ final class PhoneActions: Actions {
     if busy {throw Cleanup.Failure("Aguarde a operação atual.")}
     busy = true
     defer {busy = false}
-    if automatic {throw Cleanup.Failure("No iPhone nada é limpo automaticamente.")}
     let engine = try Engine.bundled()
     let selected = try Cleanup.select(report, indices: indices, token: token, engine: engine)
     try Cleanup.validate(selected, manifest: manifest, identity: Self.identity)
     guard let current = report else {return .canceled}
     let photos = selected.filter {$0.path.hasPrefix(PhotoLibrary.prefix)}, files = selected.filter {!$0.path.hasPrefix(PhotoLibrary.prefix)}
+    if automatic && (!files.isEmpty || photos.contains {$0.autoClean != true}) {throw Cleanup.Failure("Item não autorizado para limpeza automática.")}
     // Files only from the folders the user picked, whatever the report says.
     guard files.allSatisfy({file in picked.contains {file.path.hasPrefix($0.root + "/")}}) else {throw Cleanup.Failure("Item não autorizado para limpeza.")}
     if !files.isEmpty, await !confirm(files, photos: photos.count) {return .canceled}
@@ -131,13 +131,13 @@ final class PhoneActions: Actions {
   // The system folder picker: the page never names a path.
   func addFolder() async throws -> [String] {
     guard picker == nil, let presenter = topController() else {return picked.map(\.label)}
-    let url = await withCheckedContinuation {continuation in
+    let urls = await withCheckedContinuation {continuation in
       let picker = FolderPicker {continuation.resume(returning: $0)}
       self.picker = picker
       presenter.present(picker.controller, animated: true)
     }
     picker = nil
-    if let url {picked = try PickedFolders.add(url)}
+    for url in urls {picked = try PickedFolders.add(url)}
     return picked.map(\.label)
   }
 
@@ -191,20 +191,20 @@ private final class Preview: NSObject, QLPreviewControllerDataSource, @preconcur
   }
 }
 
-// UIDocumentPickerViewController for one folder; reports the pick (or nil) once.
+// UIDocumentPickerViewController for one or more folders; reports the picks (none when canceled) once.
 private final class FolderPicker: NSObject, UIDocumentPickerDelegate {
   let controller = UIDocumentPickerViewController(forOpeningContentTypes: [.folder])
-  private var done: ((URL?) -> Void)?
+  private var done: (([URL]) -> Void)?
 
-  init(_ done: @escaping (URL?) -> Void) {
+  init(_ done: @escaping ([URL]) -> Void) {
     self.done = done
     super.init()
     controller.delegate = self
-    controller.allowsMultipleSelection = false
+    controller.allowsMultipleSelection = true
   }
 
-  func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {finish(urls.first)}
-  func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {finish(nil)}
-  private func finish(_ url: URL?) {done?(url); done = nil}
+  func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {finish(urls)}
+  func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {finish([])}
+  private func finish(_ urls: [URL]) {done?(urls); done = nil}
 }
 #endif
