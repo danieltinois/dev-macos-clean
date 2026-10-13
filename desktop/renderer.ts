@@ -1,7 +1,7 @@
 import {BANNER, SPINNER} from '../core/ascii';
 import {createMascot} from './mascot';
 import {countUp, growBar, growStack, leave, reduced, sweep, typeIn} from './motion';
-import {diskParts, foundOnDevice} from './disk';
+import {diskParts} from './disk';
 import {currentPlatform} from './platform';
 import {pick, visible, where, type Filters, type Indexed} from './selection';
 import {createTutorial, stepsFor, tourSeen, CAT_NAME} from './tutorial';
@@ -15,7 +15,7 @@ const value = (id: string) => $<HTMLInputElement | HTMLSelectElement>(id).value;
 const button = (id: string) => $<HTMLButtonElement>(id);
 let report: CleanupReport | null = null, activeIndex: number | null = null, busy = false;
 const selected = new Set<number>();
-const names: Record<string, string> = {node:'Node.js', xcode:'Xcode', android:'Android', python:'Python', rust:'Rust', go:'Go', java:'Java', flutter:'Flutter', docker:'Docker', ide:'IDEs', macos:'macOS', downloads:'Downloads', logs:'Logs', homebrew:'Homebrew', videos:'Vídeos', screenshots:'Capturas', photos:'Fotos', duplicates:'Repetidas', icloud:'iCloud'};
+const names: Record<string, string> = {node:'Node.js', xcode:'Xcode', android:'Android', python:'Python', rust:'Rust', go:'Go', java:'Java', flutter:'Flutter', docker:'Docker', ide:'IDEs', macos:'macOS', downloads:'Downloads', logs:'Logs', homebrew:'Homebrew', videos:'Vídeos', screenshots:'Capturas', photos:'Fotos', duplicates:'Repetidas'};
 const platform = currentPlatform(window.devclean.platform);
 function ageDays(f: CleanupFinding) {const t = Date.parse(f.last_modified ?? '');return Number.isNaN(t) ? null : Math.floor((Date.now()-t)/86400000);}
 function ago(days: number | null) {if (days === null) return '';if (days < 1) return 'hoje';if (days < 31) return `há ${days} dia(s)`;if (days < 365) return `há ${Math.floor(days/30)} mês(es)`;return `há ${(days/365).toLocaleString('pt-BR',{maximumFractionDigits:1})} ano(s)`;}
@@ -36,7 +36,7 @@ const cat = createMascot(button('cat'), $('cat-art'), $('cat-says'), {tips});
 // What the shell can't do or says differently (see platform.ts).
 $('mode').textContent = platform.mode;$('scope').textContent = platform.scope;$('scope-note').textContent = platform.scopeNote;
 $('timestamp').textContent = platform.footer;$('clean').textContent = platform.send;
-if (platform.reveal) $('reveal').textContent = platform.reveal; else $('reveal').hidden = true;
+$('reveal').textContent = platform.reveal;
 for (const id of ['auto', 'select-stale']) $(id).hidden = !platform.automatic;
 document.documentElement.dataset.platform = platform.id;$('disk-title').textContent = platform.disk;
 const tour = createTutorial({
@@ -127,7 +127,17 @@ function details(f: Indexed) {
   $<HTMLDialogElement>('details').showModal();
 }
 $('close').onclick=()=>$<HTMLDialogElement>('details').close();
-$('reveal').onclick=async()=>{try{await window.devclean.reveal(activeIndex!);}catch(e){status((e as Error).message,true);$<HTMLDialogElement>('details').close();}};
+// On the iPhone this may download the item from iCloud first, so a loading layer
+// covers the details. It only shows when opening takes a moment: the Finder is instant.
+$('opening-text').textContent = platform.opening;
+$('reveal').onclick=async()=>{
+  let frame = 0;
+  const spin = () => {$('opening-spinner').textContent = SPINNER[frame++ % SPINNER.length]!;};
+  const show = setTimeout(() => {spin();$('opening').hidden = false;}, 200), timer = reduced() ? null : setInterval(spin, 80);
+  button('reveal').disabled=true;
+  try{await window.devclean.reveal(activeIndex!);}catch(e){status((e as Error).message,true);$<HTMLDialogElement>('details').close();}
+  finally{clearTimeout(show);if (timer) clearInterval(timer);$('opening').hidden = true;button('reveal').disabled=false;}
+};
 for(const id of ['search','category','severity','sort']) $(id).addEventListener(id==='search'?'input':'change',update);
 $('export').onclick=async()=>{try{if(await window.devclean.exportReport()) status('Relatório exportado.');}catch(e){status((e as Error).message,true);}};
 $('scan').onclick=async()=>{
@@ -169,7 +179,7 @@ function disk() {
   const storage = report?.storage;
   $('disk').hidden = !storage;
   if (!report || !storage) return;
-  const d = diskParts(storage, foundOnDevice(report.totals.by_category)), percent = (n: number) => `${Math.round(n / d.total * 100)}%`;
+  const d = diskParts(storage, report.totals.bytes), percent = (n: number) => `${Math.round(n / d.total * 100)}%`;
   $('disk-total').textContent = `${bytes(d.total)} no total`;
   growStack($('disk-bar'), [[d.other, 'bar-used'], [d.found, 'bar-fill'], [d.purgeable ?? 0, 'bar-amber']], d.total, 30);
   const rows: [string, string, string, string][] = [

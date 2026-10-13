@@ -52,8 +52,8 @@ export const STALE_DAYS = 90;
 export const PHOTO_PREFIX = 'photos://';
 // Files from folders the user picked in the Files app (iPhone): only these rules,
 // only regular files, always for review. They go to Recently Deleted in Files.
-const fileTargets = new Set(['large-files', 'large-files-icloud', 'old-downloads']);
-const photoTargets = new Set(['large-videos', 'large-videos-icloud', 'large-photos', 'duplicate-photos', 'old-screenshots', 'screen-recordings', 'burst-extras']);
+const fileTargets = new Set(['large-files', 'old-downloads']);
+const photoTargets = new Set(['large-videos', 'large-photos', 'duplicate-photos', 'screenshots', 'screen-recordings', 'burst-extras']);
 // Project outputs only qualify when the project has not been touched for STALE_DAYS.
 export function isAutomatic(finding: PolicyInput, now: number) {
   if (automatic.has(finding.rule_id)) return true;

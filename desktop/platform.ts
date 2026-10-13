@@ -19,8 +19,10 @@ export interface Platform {
   // How to actually get the space back afterwards (status line and the cat).
   freeSpace: string;
   catFreeSpace: string;
-  // Details button that shows the item in the system, or null.
-  reveal: string | null;
+  // Details button that shows the item: in the Finder on the Mac, in Quick Look on the iPhone.
+  reveal: string;
+  // Shown over the details while the item opens.
+  opening: string;
   // Automatic cleanup and the stale-projects shortcut.
   automatic: boolean;
   // Folders picked in the Files app (the iPhone can't see the disk otherwise).
@@ -42,7 +44,7 @@ export const PLATFORMS: Record<PlatformId, Platform> = {
     footer: 'Limpeza via Lixeira · restauração pelo Finder.',
     send: 'Enviar à Lixeira', toTrash: 'para a Lixeira', inTrash: 'na Lixeira', cheer: 'Pra Lixeira!',
     freeSpace: 'Esvazie a Lixeira para liberar espaço.', catFreeSpace: 'Agora é só esvaziar a Lixeira.',
-    reveal: 'Mostrar no Finder', automatic: true, folders: false,
+    reveal: 'Mostrar no Finder', opening: 'Abrindo no Finder…', automatic: true, folders: false,
     disk: 'DISCO DO MAC', foundNote: 'Fica livre depois de esvaziar a Lixeira', purgeableNote: 'Caches e cópias que o macOS apaga sozinho quando falta espaço',
     scanning: 'Varrendo caches e node_modules…', lookWhat: 'caches, node_modules e outras tralhas de dev',
   },
@@ -54,7 +56,7 @@ export const PLATFORMS: Record<PlatformId, Platform> = {
     footer: 'Limpeza via Apagados · recuperável nos apps Fotos e Arquivos.',
     send: 'Enviar para Apagados', toTrash: 'para Apagados', inTrash: 'em Apagados', cheer: 'Pra Apagados!',
     freeSpace: 'Para liberar espaço já, apague de vez em Apagados, no app Fotos ou Arquivos.', catFreeSpace: 'O espaço volta quando Apagados esvaziar.',
-    reveal: null, automatic: false, folders: true,
+    reveal: 'Abrir para conferir', opening: 'Abrindo… Vídeos grandes podem levar alguns segundos.', automatic: false, folders: true,
     disk: 'ARMAZENAMENTO DO IPHONE', foundNote: 'Fica livre quando Apagados esvaziar', purgeableNote: 'Caches e originais do iCloud que o iOS apaga sozinho quando falta espaço',
     scanning: 'Varrendo fotos e vídeos…', lookWhat: 'vídeos grandes, fotos repetidas, capturas de tela velhas e outras tralhas',
   },

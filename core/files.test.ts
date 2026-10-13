@@ -18,11 +18,10 @@ test('fileMatches needs every given criterion', () => {
   assert.equal(fileMatches({folder: 'Downloads', min_age_days: 30}, item({path: '/d/Downloads/x/a.zip', modified_ms: NOW - 31 * DAY}), NOW), true);
   assert.equal(fileMatches({folder: 'Downloads'}, item({path: '/d/Downloads.zip'}), NOW), false);
   assert.equal(fileMatches({folder: 'Downloads'}, item({path: '/d/Downloads'}), NOW), false);
-  assert.equal(fileMatches({stored: 'cloud', min_bytes: 10}, item({bytes: 10, local: false}), NOW), true);
-  assert.equal(fileMatches({stored: 'device'}, item({local: null}), NOW), true);
+  assert.equal(fileMatches({min_bytes: 10}, item({bytes: 9}), NOW), false);
 });
 
-test('picked files become findings with a readable label and where they are', () => {
+test('picked files on the iPhone become findings with a readable label and where they are', () => {
   const files = [
     item({path: '/d/movie.mov', label: 'iCloud Drive › movie.mov', bytes: 2000 * MB, local: true, cloud: true}),
     item({path: '/d/backup.zip', label: 'iCloud Drive › backup.zip', bytes: 500 * MB, local: false, cloud: true}),
@@ -33,11 +32,10 @@ test('picked files become findings with a readable label and where they are', ()
   const report = scan(fileHost(() => files), loadRules(), {home: '/nonexistent', sources: ['files'], now: NOW});
   const byPath = Object.fromEntries(report.findings.map(f => [f.path, f]));
   assert.deepEqual(Object.fromEntries(Object.entries(byPath).map(([p, f]) => [p, f.rule_id])),
-    {'/d/movie.mov': 'large-files', '/d/backup.zip': 'large-files-icloud', '/d/Downloads/old.pdf': 'old-downloads'});
+    {'/d/movie.mov': 'large-files', '/d/Downloads/old.pdf': 'old-downloads'});
   assert.equal(byPath['/d/movie.mov']!.metadata.label, 'iCloud Drive › movie.mov');
   assert.match(byPath['/d/movie.mov']!.metadata['Onde está']!, /Remover Download/);
-  assert.match(byPath['/d/backup.zip']!.metadata['Onde está']!, /não no iPhone/);
-  assert.deepEqual(report.totals.by_category, {downloads: 1000, files: 2000 * MB, icloud: 500 * MB});
+  assert.deepEqual(report.totals.by_category, {downloads: 1000, files: 2000 * MB});
 });
 
 test('picked folders are skipped without the files source, and errors become warnings', () => {

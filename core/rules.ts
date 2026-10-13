@@ -7,8 +7,7 @@ import type {FileMatch, PhotoMatch, Rule, Severity} from './types';
 export const SEVERITIES: readonly Severity[] = ['SAFE', 'REVIEW', 'DANGER'];
 const SLUG = /^[a-z0-9][a-z0-9-]*$/;
 const RULE_KEYS = new Set(['id', 'name', 'category', 'severity', 'reclaimable', 'description', 'paths', 'patterns', 'markers', 'photos', 'files', 'rebuild']);
-const PHOTO_VALUES: Record<string, readonly string[]> = {media: ['image', 'video'], subtype: ['screenshot', 'screen-recording'], burst: ['extra'], duplicate: ['extra'], stored: ['device', 'cloud']};
-const FILE_VALUES: Record<string, readonly string[]> = {stored: ['device', 'cloud']};
+const PHOTO_VALUES: Record<string, readonly string[]> = {media: ['image', 'video'], subtype: ['screenshot', 'screen-recording'], burst: ['extra'], duplicate: ['extra']};
 const NUMBERS = ['min_bytes', 'min_age_days'];
 
 // Photo and file criteria: each key is a known choice, a non-negative integer or,
@@ -56,7 +55,7 @@ export function validateRule(data: unknown): Rule {
   }
   const {paths, patterns, markers} = lists as Record<keyof typeof lists, string[]>;
   const photos = data.photos === undefined || data.photos === null ? null : validateMatch('photos', data.photos, PHOTO_VALUES) as PhotoMatch;
-  const files = data.files === undefined || data.files === null ? null : validateMatch('files', data.files, FILE_VALUES) as FileMatch;
+  const files = data.files === undefined || data.files === null ? null : validateMatch('files', data.files, {}) as FileMatch;
   if (photos && files) throw new Error('a rule matches photos or files, not both');
   if ((photos || files) && (paths.length || patterns.length || markers.length)) throw new Error(`${photos ? 'photos' : 'files'} rules take no paths, patterns or markers`);
   if (!paths.length && !patterns.length && !photos && !files) throw new Error('rule must define at least one of paths, patterns, photos or files');

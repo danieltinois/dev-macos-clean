@@ -1,6 +1,6 @@
 import {test} from 'bun:test';
 import assert from 'node:assert/strict';
-import {diskParts, foundOnDevice} from './disk';
+import {diskParts} from './disk';
 
 const GB = 1024 ** 3;
 
@@ -17,8 +17,4 @@ test('without purgeable space everything not free is in use', () => {
 test('findings never count for more than the space in use', () => {
   const parts = diskParts({total_bytes: 100, free_bytes: 90, purgeable_bytes: 0}, 500);
   assert.deepEqual([parts.other, parts.found, parts.freeAfter], [0, 10, 100]);
-});
-
-test('items only in iCloud do not take space on the device', () => {
-  assert.equal(foundOnDevice({videos: 300, icloud: 900, files: 50}), 350);
 });

@@ -90,15 +90,17 @@ import Testing
   @Test func photoLibraryItemsGoThroughTheEngine() throws {
     let now = Date().timeIntervalSince1970 * 1000, day = 86_400_000.0
     let library: @Sendable () throws -> [[String: Any]] = {[
-      ["id": "V/L0/001", "name": "IMG_0100.MOV", "media": "video", "subtypes": [String](), "burst": "none", "bytes": 300.0 * 1024 * 1024, "created_ms": now - day, "local": false, "cloud": true, "width": 1920, "height": 1080, "duration_ms": 60_000.0],
+      ["id": "V/L0/001", "name": "IMG_0100.MOV", "media": "video", "subtypes": [String](), "burst": "none", "bytes": 300.0 * 1024 * 1024, "created_ms": now - day, "local": true, "cloud": true, "width": 1920, "height": 1080, "duration_ms": 60_000.0],
+      ["id": "C/L0/001", "name": "IMG_0101.MOV", "media": "video", "subtypes": [String](), "burst": "none", "bytes": 300.0 * 1024 * 1024, "created_ms": now - day, "local": false, "cloud": true, "width": 1920, "height": 1080, "duration_ms": 61_000.0],
       ["id": "S/L0/001", "name": "IMG_0200.PNG", "media": "image", "subtypes": ["screenshot"], "burst": "none", "bytes": NSNull(), "created_ms": now - 40 * day, "local": true, "cloud": NSNull(), "width": 1179, "height": 2556, "duration_ms": 0.0],
       ["id": "P/L0/001", "name": "IMG_0300.HEIC", "media": "image", "subtypes": [String](), "burst": "none", "bytes": 1000.0, "created_ms": now, "local": true, "cloud": false, "width": 4032, "height": 3024, "duration_ms": 0.0],
     ]}
     let engine = try Engine(script: String(contentsOf: engineURL, encoding: .utf8), host: NativeHost(home: "/nonexistent", photos: library))
     let report = try engine.scan(ScanOptions(home: "/nonexistent", sources: ["photos"]))
-    #expect(report.findings.map(\.ruleId).sorted() == ["large-videos-icloud", "old-screenshots"])
-    #expect(report.findings.first {$0.ruleId == "large-videos-icloud"}?.path == "photos://V/L0/001")
-    #expect(report.findings.first {$0.ruleId == "old-screenshots"}?.metadata["label"] == "IMG_0200.PNG")
+    // The video only in iCloud takes no space on the iPhone, so it is not a finding.
+    #expect(report.findings.map(\.ruleId).sorted() == ["large-videos", "screenshots"])
+    #expect(report.findings.first {$0.ruleId == "large-videos"}?.path == "photos://V/L0/001")
+    #expect(report.findings.first {$0.ruleId == "screenshots"}?.metadata["label"] == "IMG_0200.PNG")
     #expect(report.warnings == [] && report.roots == [])
     let decisions = try engine.decide(report, home: "/nonexistent", appRoot: "/app", now: Date())
     #expect(decisions.allSatisfy {$0.allowed && $0.review && !$0.auto})

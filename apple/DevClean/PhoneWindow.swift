@@ -6,6 +6,7 @@
 // cleaned automatically.
 #if os(iOS)
 import DevCleanKit
+import QuickLook
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
@@ -29,6 +30,7 @@ final class PhoneActions: ShellActions {
   private var busy = false
   private lazy var picked = PickedFolders.load()
   private var picker: FolderPicker?
+  private var preview: Preview?
 
   // Photos by their library identity, files by path, device, inode and times.
   nonisolated private static func identity(_ path: String) throws -> String {
@@ -109,8 +111,21 @@ final class PhoneActions: ShellActions {
     }
   }
 
-  func reveal(_ index: Int) throws {
-    throw Cleanup.Failure("Abra o app Fotos ou Arquivos para ver este item.")
+  // iOS can't open a given photo in the Photos app, so the item opens here, in
+  // Quick Look: photos and videos (downloaded from iCloud if needed) and files.
+  func reveal(_ index: Int) async throws {
+    guard preview == nil, let finding = report?.findings[safe: index] else {throw Cleanup.Failure("Item inválido")}
+    let file: (url: URL, temporary: Bool)
+    if finding.path.hasPrefix(PhotoLibrary.prefix) {
+      file = try await PhotoLibrary.previewFile(finding.path)
+    } else {
+      guard picked.contains(where: {finding.path.hasPrefix($0.root + "/")}) else {throw Cleanup.Failure("Item inválido")}
+      file = (URL(fileURLWithPath: finding.path), false)
+    }
+    guard let presenter = topController() else {return}
+    let preview = Preview(url: file.url, temporary: file.temporary) {[weak self] in self?.preview = nil}
+    self.preview = preview
+    presenter.present(preview.controller, animated: true)
   }
 
   // MARK: Folders from the Files app
@@ -154,6 +169,28 @@ final class PhoneActions: ShellActions {
     var top = shell?.webView.window?.rootViewController
     while let presented = top?.presentedViewController {top = presented}
     return top
+  }
+}
+
+// Quick Look for one file, read-only. A temporary copy (a photo) is removed when
+// the preview closes; it is the app's own file, never one of the user's.
+@MainActor
+private final class Preview: NSObject, QLPreviewControllerDataSource, @preconcurrency QLPreviewControllerDelegate {
+  let controller = QLPreviewController()
+  private let url: URL, temporary: Bool, closed: () -> Void
+
+  init(url: URL, temporary: Bool, closed: @escaping () -> Void) {
+    self.url = url; self.temporary = temporary; self.closed = closed
+    super.init()
+    controller.dataSource = self
+    controller.delegate = self
+  }
+
+  func numberOfPreviewItems(in controller: QLPreviewController) -> Int {1}
+  func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> any QLPreviewItem {url as NSURL}
+  func previewControllerDidDismiss(_ controller: QLPreviewController) {
+    if temporary {try? FileManager.default.removeItem(at: url)}
+    closed()
   }
 }
 

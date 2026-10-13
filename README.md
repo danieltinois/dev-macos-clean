@@ -355,23 +355,23 @@ Trash, and TypeScript decides what each item is and what may be cleaned.
   **Cancelar**, revalidation of every path before moving it, and no permanent
   deletion.
 - **iPhone** — the same interface, adapted to the phone screen. iOS gives no
-  access to the disk or to other apps' data, so the iPhone app scans the **whole
-  photo library**: videos of 100 MB or more, photos of 15 MB or more (ProRAW,
-  panoramas), exact copies, screenshots older than 30 days, screen recordings and
-  extra burst frames. It also tells **where the original is**: videos already
-  only in iCloud are listed separately (deleting frees iCloud, not the iPhone),
-  and for those both on the iPhone and in iCloud it points to **Optimize iPhone
-  Storage**, which removes the original from the iPhone without deleting it.
+  access to the disk or to other apps' data, so the iPhone app looks at what
+  takes space **on the phone** in the **whole photo library**: videos of 50 MB or
+  more, photos of 15 MB or more (ProRAW, panoramas), exact copies, screenshots,
+  screen recordings and extra burst frames. Items whose original is only in
+  iCloud take no space on the phone, so they are left out. For items both on the
+  iPhone and in iCloud, it points to **Optimize iPhone Storage**, which removes
+  the original from the iPhone without deleting it.
   Everything is for review only (there is no automatic cleanup): you pick the
   items, iOS asks for its own confirmation, and they go to **Photos › Recently
   Deleted**, where they stay for 30 days. With limited photo access, the app only
-  sees the photos you allowed.
+  sees the photos you allowed. **Abrir para conferir** (open to check) in the
+  details opens the item in Quick Look.
   With **+ Pasta do Arquivos** (add a Files folder) you pick folders from the
   Files app (Downloads, all of iCloud Drive…) for it to look at too: files of
-  100 MB or more (on the iPhone or only in iCloud Drive) and downloads older than
-  30 days. These go to **Recently Deleted** in the Files app, after a
-  confirmation that defaults to Cancelar. iOS doesn't let any app see other apps'
-  data or System Data.
+  50 MB or more stored on the iPhone and downloads older than 30 days. These go
+  to **Recently Deleted** in the Files app, after a confirmation that defaults to
+  Cancelar. iOS doesn't let any app see other apps' data or System Data.
 - **Mac and iPhone** — a panel shows the disk space: what is in use, what
   DevClean found, what the system frees by itself (Swift app only), and how much
   is free now and after cleanup. The Electron app and the CLI also show free space.
@@ -396,7 +396,7 @@ the Electron app, needs **Full Disk Access** to measure some folders.
 | Android / Java | Gradle caches, Gradle Wrapper | System images, AVDs, Maven repository |
 | Rust / Go / Python / Dart | `target/` of Cargo projects, Cargo registry, Go build and modules, pip, pub cache | |
 | IDEs / other | JetBrains and Android Studio caches, Homebrew | Docker (`docker system prune`), app caches, logs, Downloads |
-| iPhone (photos and Files) | | Large videos and photos, exact copies, old screenshots, screen recordings, extra burst frames, large files, old downloads |
+| iPhone (photos and Files) | | Large videos and photos, exact copies, screenshots, screen recordings, extra burst frames, large files, old downloads |
 
 To add a new tool, add a JSON file in `rules/` and, if its cleanup is low risk,
 its fixed path in `core/policy.ts`.

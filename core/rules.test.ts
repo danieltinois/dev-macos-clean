@@ -50,12 +50,14 @@ test('photo rules are validated strictly', () => {
   rejects({...BASE, photos: {min_bytes: -1}}, /non-negative integer/);
   rejects({...BASE, photos: {min_age_days: 1.5}}, /non-negative integer/);
   rejects({...BASE, photos: {color: 'red'}}, /unknown photos field/);
-  rejects({...BASE, photos: {stored: 'disk'}}, /photos.stored/);
+  rejects({...BASE, photos: {stored: 'device'}}, /unknown photos field/);
+  rejects({...BASE, files: {folder: 'a/b'}}, /plain folder name/);
+  rejects({...BASE, files: {min_bytes: 1}, photos: {media: 'video'}}, /photos or files, not both/);
   rejects({...BASE, photos: {media: 'video'}, paths: ['/x']}, /no paths, patterns or markers/);
 });
-test('photo rules ship for videos, photos, copies, screenshots and bursts, all for review', () => {
-  const photos = loadRules().filter(rule => rule.photos);
-  assert.deepEqual(photos.map(rule => rule.id), ['burst-extras', 'duplicate-photos', 'large-photos', 'large-videos-icloud', 'large-videos', 'old-screenshots', 'screen-recordings']);
+test('photo and file rules ship for the iPhone, all for review', () => {
+  const photos = loadRules().filter(rule => rule.photos || rule.files);
+  assert.deepEqual(photos.map(rule => rule.id), ['burst-extras', 'duplicate-photos', 'large-files', 'large-photos', 'large-videos', 'old-downloads', 'screen-recordings', 'screenshots']);
   for (const rule of photos) {
     assert.equal(rule.severity, 'REVIEW', rule.id);
     assert.deepEqual([rule.paths, rule.patterns, rule.markers], [[], [], []]);

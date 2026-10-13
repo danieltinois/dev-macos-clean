@@ -16,16 +16,12 @@ export interface PhotoMatch {
   burst?: 'extra';
   // `extra`: an exact copy of an older item (same kind, pixel size, duration and bytes).
   duplicate?: 'extra';
-  // `device`: the original is on the device (or unknown); `cloud`: only in iCloud.
-  stored?: 'device' | 'cloud';
   min_bytes?: number;
   min_age_days?: number;
 }
 
 // Criteria a file from a picked folder must meet (all given ones). See rules.ts.
 export interface FileMatch {
-  // `device`: the content is on the device (or unknown); `cloud`: only in iCloud Drive.
-  stored?: 'device' | 'cloud';
   // A folder with this name anywhere in the file's path, e.g. Downloads.
   folder?: string;
   min_bytes?: number;

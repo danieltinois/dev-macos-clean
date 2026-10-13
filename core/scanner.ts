@@ -84,9 +84,8 @@ export function duplicateExtras(assets: PhotoAsset[]): Set<string> {
   return extras;
 }
 
-// Where the original is, for the details dialog.
+// Where the original is, for the details dialog (items only in iCloud never get here).
 function storedAt({local, cloud}: PhotoAsset): string | null {
-  if (local === false) return 'Só no iCloud. O iPhone guarda uma versão leve, então apagar libera espaço no iCloud, não no iPhone.';
   if (local && cloud) return 'No iPhone e no iCloud. Para tirar do iPhone sem apagar, ligue Ajustes › Fotos › Otimizar Armazenamento do iPhone.';
   if (local && cloud === false) return 'Só no iPhone, sem cópia no iCloud. Apagar remove a única cópia.';
   return null;
@@ -98,21 +97,18 @@ export function photoMatches(match: PhotoMatch, asset: PhotoAsset, now: number, 
     (!match.subtype || asset.subtypes.includes(match.subtype)) &&
     (!match.burst || asset.burst === match.burst) &&
     (!match.duplicate || extras.has(asset.id)) &&
-    (!match.stored || (match.stored === 'cloud') === (asset.local === false)) &&
     (match.min_bytes === undefined || (asset.bytes !== null && asset.bytes >= match.min_bytes)) &&
     (match.min_age_days === undefined || now - asset.created_ms >= match.min_age_days * 86400000);
 }
 
 // Whether a file from a picked folder meets every criterion of `match`.
 export function fileMatches(match: FileMatch, item: FileItem, now: number): boolean {
-  return (!match.stored || (match.stored === 'cloud') === (item.local === false)) &&
-    (!match.folder || path.dirname(item.path).split('/').includes(match.folder)) &&
+  return (!match.folder || path.dirname(item.path).split('/').includes(match.folder)) &&
     (match.min_bytes === undefined || item.bytes >= match.min_bytes) &&
     (match.min_age_days === undefined || now - item.modified_ms >= match.min_age_days * 86400000);
 }
 
 function fileStoredAt({local, cloud}: FileItem): string | null {
-  if (local === false) return 'Só no iCloud Drive. O iPhone não guarda uma cópia, então apagar libera espaço no iCloud, não no iPhone.';
   if (local && cloud) return 'No iPhone e no iCloud Drive. Para tirar do iPhone sem apagar, toque e segure o arquivo no app Arquivos e escolha Remover Download.';
   if (local && cloud === false) return 'Só no iPhone, sem cópia no iCloud. Apagar remove a única cópia.';
   return null;
@@ -188,12 +184,15 @@ export function scan(host: Host, rules: Rule[], options: Partial<ScanOptions> = 
   }
 
   // 3. Photo library items, on hosts that list them. The first matching rule wins.
+  // Items only in iCloud take no space on the device, so they never become findings;
+  // they still count as the original when looking for copies.
   const photoRules = opts.sources.includes('photos') && host.photos ? selected.filter(rule => rule.photos) : [];
   if (photoRules.length && !full()) {
     let assets: PhotoAsset[] = [];
     try {assets = host.photos!();} catch (error) {warnings.push(`cannot read photos: ${(error as Error).message}`);}
     const now = opts.now ?? Date.now(), extras = duplicateExtras(assets);
     for (const asset of assets) {
+      if (asset.local === false) continue;
       const rule = photoRules.find(rule => photoMatches(rule.photos!, asset, now, extras));
       if (!rule) continue;
       if (full()) {stopped(); break;}
@@ -208,13 +207,15 @@ export function scan(host: Host, rules: Rule[], options: Partial<ScanOptions> = 
     }
   }
 
-  // 4. Files in the folders the user picked, on hosts that list them.
+  // 4. Files in the folders the user picked, on hosts that list them. Like photos,
+  // files only in iCloud Drive take no space on the device and are skipped.
   const fileRules = opts.sources.includes('files') && host.files ? selected.filter(rule => rule.files) : [];
   if (fileRules.length && !full()) {
     let items: FileItem[] = [];
     try {items = host.files!();} catch (error) {warnings.push(`cannot read picked folders: ${(error as Error).message}`);}
     const now = opts.now ?? Date.now();
     for (const item of items) {
+      if (item.local === false) continue;
       const rule = fileRules.find(rule => fileMatches(rule.files!, item, now));
       if (!rule) continue;
       if (full()) {stopped(); break;}

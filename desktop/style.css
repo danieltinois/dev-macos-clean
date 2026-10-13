@@ -66,6 +66,10 @@ footer { display: flex; justify-content: space-between; align-items: baseline; g
 #status.error { color: #e39692; }
 dialog { width: 590px; max-height: 85vh; background: #1c1f23; color: #c8cbd1; border: 1px solid #484e57; border-radius: 6px; padding: 22px; box-shadow: 0 20px 80px #0007; }
 dialog::backdrop { background: #090b0dbb; }
+.opening { position: fixed; inset: 0; z-index: 1; display: grid; place-content: center; justify-items: center; gap: 12px; padding: 24px; background: #111315f0; text-align: center; }
+.opening[hidden] { display: none; }
+.opening-spinner { font: 28px/1 var(--mono); color: var(--accent); }
+.opening p { max-width: 320px; color: #c8cbd1; font-size: 13px; }
 .dialog-head { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
 .dialog-head h2 { font: 13px var(--mono); }
 .dialog-head button { font-size: 10px; padding: 5px 8px; }

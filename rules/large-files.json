@@ -1,10 +1,10 @@
 {
   "id": "large-files",
-  "name": "Arquivos grandes no iPhone",
+  "name": "Arquivos grandes",
   "category": "files",
   "severity": "REVIEW",
   "reclaimable": false,
-  "description": "Arquivos de 100 MB ou mais guardados no iPhone, nas pastas que você escolheu no app Arquivos. Se estão no iCloud Drive e você quer manter, use Remover Download no app Arquivos em vez de apagar.",
-  "files": {"min_bytes": 104857600, "stored": "device"},
+  "description": "Arquivos de 50 MB ou mais guardados no iPhone, nas pastas que você escolheu no app Arquivos. Se estão no iCloud Drive e você quer manter, use Remover Download no app Arquivos em vez de apagar.",
+  "files": {"min_bytes": 52428800},
   "rebuild": {"description": "Não se recria. Fica em Apagados no app Arquivos até sumir de vez."}
 }

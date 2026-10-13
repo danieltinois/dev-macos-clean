@@ -14,7 +14,7 @@ const LIBRARY: PhotoAsset[] = [
   asset({id: 'video-small', name: 'IMG_0101.MOV', media: 'video', bytes: 20 * 1024 ** 2}),
   asset({id: 'shot-old', name: 'IMG_0200.PNG', subtypes: ['screenshot'], bytes: 400_000, created_ms: NOW - 45 * DAY}),
   asset({id: 'shot-new', name: 'IMG_0201.PNG', subtypes: ['screenshot'], created_ms: NOW - 3 * DAY}),
-  asset({id: 'recording', name: 'RPReplay.MP4', media: 'video', subtypes: ['screen-recording'], bytes: 50 * 1024 ** 2}),
+  asset({id: 'recording', name: 'RPReplay.MP4', media: 'video', subtypes: ['screen-recording'], bytes: 30 * 1024 ** 2}),
   asset({id: 'burst-key', name: 'IMG_0300.JPG', burst: 'key'}),
   asset({id: 'burst-extra', name: 'IMG_0301.JPG', burst: 'extra', bytes: null}),
   asset({id: 'photo', name: 'IMG_0400.HEIC', bytes: 5_000_000}),
@@ -39,30 +39,34 @@ test('exact copies are extras, except the oldest of each group', () => {
   assert.deepEqual(report.findings.map(f => [f.rule_id, f.path.slice(policy.PHOTO_PREFIX.length)]), [['duplicate-photos', 'again'], ['duplicate-photos', 'third']]);
 });
 
-test('big videos are split by where the original is, and say so', () => {
+test('items only in iCloud take no space here and are skipped; the others say where they are', () => {
   const big = (id: string, local: boolean | null, cloud: boolean | null) => asset({id, media: 'video', bytes: 200 * 1024 ** 2, local, cloud});
   const library = [big('phone-and-cloud', true, true), big('cloud-only', false, true), big('phone-only', true, false), big('unknown', null, null), asset({id: 'raw', bytes: 25 * 1024 ** 2})];
   const report = scan(photoHost(() => library), loadRules(), {home: '/nonexistent', sources: ['photos'], now: NOW});
   const byId = Object.fromEntries(report.findings.map(f => [f.path.slice(policy.PHOTO_PREFIX.length), f]));
   assert.deepEqual(Object.fromEntries(Object.entries(byId).map(([id, f]) => [id, f.rule_id])),
-    {'phone-and-cloud': 'large-videos', 'cloud-only': 'large-videos-icloud', 'phone-only': 'large-videos', unknown: 'large-videos', raw: 'large-photos'});
+    {'phone-and-cloud': 'large-videos', 'phone-only': 'large-videos', unknown: 'large-videos', raw: 'large-photos'});
   assert.match(byId['phone-and-cloud']!.metadata['Onde está']!, /Otimizar Armazenamento/);
-  assert.match(byId['cloud-only']!.metadata['Onde está']!, /não no iPhone/);
   assert.match(byId['phone-only']!.metadata['Onde está']!, /única cópia/);
   assert.equal(byId['unknown']!.metadata['Onde está'], undefined);
-  assert.equal(report.totals.by_category.icloud, 200 * 1024 ** 2);
+});
+
+test('a copy on the iPhone of an original only in iCloud is still a copy', () => {
+  const copy = (id: string, created_ms: number, local: boolean) => asset({id, created_ms, local, width: 4032, height: 3024, bytes: 3_000_000});
+  const report = scan(photoHost(() => [copy('original', NOW - DAY, false), copy('copy', NOW, true)]), loadRules(), {home: '/nonexistent', sources: ['photos'], now: NOW});
+  assert.deepEqual(report.findings.map(f => [f.rule_id, f.path]), [['duplicate-photos', `${policy.PHOTO_PREFIX}copy`]]);
 });
 
 test('photo items become findings with a photos:// path and a readable label', () => {
   const report = scan(photoHost(() => LIBRARY), loadRules(), {home: '/nonexistent', sources: ['photos'], now: NOW});
   const byId = Object.fromEntries(report.findings.map(f => [f.path.slice(policy.PHOTO_PREFIX.length), f]));
-  assert.deepEqual(Object.keys(byId).sort(), ['burst-extra', 'recording', 'shot-old', 'video-big']);
+  assert.deepEqual(Object.keys(byId).sort(), ['burst-extra', 'recording', 'shot-new', 'shot-old', 'video-big']);
   assert.equal(byId['video-big']!.rule_id, 'large-videos');
   assert.equal(byId['video-big']!.metadata.label, 'IMG_0100.MOV');
   assert.equal(byId['video-big']!.last_modified, new Date(NOW - 2 * DAY).toISOString());
   assert.equal(byId['recording']!.rule_id, 'screen-recordings');
   assert.deepEqual([byId['burst-extra']!.size_bytes, byId['burst-extra']!.size_complete], [0, false]);
-  assert.deepEqual(report.totals.by_category, {photos: 0, screenshots: 400_000 + 50 * 1024 ** 2, videos: 300 * 1024 ** 2});
+  assert.deepEqual(report.totals.by_category, {photos: 0, screenshots: 400_000 + 1000 + 30 * 1024 ** 2, videos: 300 * 1024 ** 2});
   assert.deepEqual(report.warnings, []);
 });
 

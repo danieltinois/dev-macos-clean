@@ -18,7 +18,7 @@ protocol ShellActions: AnyObject {
   var shell: WebShell? {get set}
   func scan() async throws -> String
   func cleanup(indices: [Int], token: String, automatic: Bool) async throws -> String
-  func reveal(_ index: Int) throws
+  func reveal(_ index: Int) async throws
   func export() async throws -> Bool
   // Folders picked in the Files app, as labels (iPhone only).
   func folders() throws -> [String]
@@ -91,7 +91,7 @@ final class WebShell: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDel
       switch try BridgeRequest(message.body) {
       case .scan: return (try await actions.scan(), nil)
       case .cleanup(let indices, let token, let automatic): return (try await actions.cleanup(indices: indices, token: token, automatic: automatic), nil)
-      case .reveal(let index): try actions.reveal(index); return (nil, nil)
+      case .reveal(let index): try await actions.reveal(index); return (nil, nil)
       case .export: return (try await actions.export(), nil)
       case .folders: return (try BridgeReply.folders(actions.folders()), nil)
       case .addFolder: return (try BridgeReply.folders(await actions.addFolder()), nil)

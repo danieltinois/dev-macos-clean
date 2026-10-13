@@ -4,8 +4,10 @@
 // items go to Recently Deleted for 30 days. Nothing here deletes files directly.
 // iOS only, so the Mac app doesn't link Photos.
 #if os(iOS)
+import AVFoundation
 import Foundation
 import Photos
+import UniformTypeIdentifiers
 
 public enum PhotoLibrary {
   public static let prefix = "photos://"
@@ -85,6 +87,37 @@ public enum PhotoLibrary {
       throw Cleanup.Failure("A foto não existe mais. Analise novamente.")
     }
     return "\(asset.localIdentifier):\(asset.modificationDate?.timeIntervalSince1970 ?? 0)"
+  }
+
+  // A local file to preview the item with, downloading it from iCloud if needed.
+  // Videos come as the library's own file; photos are copied to a temporary file
+  // (`temporary`), which the caller removes after the preview.
+  public static func previewFile(_ path: String) async throws -> (url: URL, temporary: Bool) {
+    guard path.hasPrefix(prefix), let asset = PHAsset.fetchAssets(withLocalIdentifiers: [String(path.dropFirst(prefix.count))], options: nil).firstObject else {
+      throw Cleanup.Failure("A foto não existe mais. Analise novamente.")
+    }
+    if asset.mediaType == .video {
+      let options = PHVideoRequestOptions()
+      options.isNetworkAccessAllowed = true
+      options.version = .original
+      let url: URL? = await withCheckedContinuation {continuation in
+        PHImageManager.default().requestAVAsset(forVideo: asset, options: options) {video, _, _ in continuation.resume(returning: (video as? AVURLAsset)?.url)}
+      }
+      guard let url else {throw Cleanup.Failure("Não consegui abrir este vídeo.")}
+      return (url, false)
+    }
+    let options = PHImageRequestOptions()
+    options.isNetworkAccessAllowed = true
+    options.deliveryMode = .highQualityFormat
+    options.version = .current
+    let (data, type): (Data?, String?) = await withCheckedContinuation {continuation in
+      PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) {data, type, _, _ in continuation.resume(returning: (data, type))}
+    }
+    guard let data else {throw Cleanup.Failure("Não consegui abrir esta foto.")}
+    let ext = type.flatMap {UTType($0)?.preferredFilenameExtension} ?? "jpg"
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("devclean-preview-\(UUID().uuidString).\(ext)")
+    try data.write(to: url)
+    return (url, true)
   }
 
   // Moves the items to Recently Deleted. The system shows its own confirmation;
